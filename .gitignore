@@ -1,0 +1,33 @@
+# Node & Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Python & Backend
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+*.db
+*.sqlite3
+
+# ML Models & Data (optional large generated files)
+# data/*.csv
+# ml/*.joblib
+
+# Testing & Cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment variables & OS files
+.env
+.env.local
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

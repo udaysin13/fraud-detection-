@@ -1,0 +1,81 @@
+"""
+VaultGuard - FastAPI Main Application Entrypoint
+"""
+
+import sys
+from pathlib import Path
+
+# Add project root directory to sys.path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from backend.app.routes.analytics import router as analytics_router
+from backend.app.routes.alerts import router as alerts_router
+from backend.app.routes.transactions import router as transactions_router
+from backend.app.routes.entities import router as entities_router
+from backend.app.routes.models_api import router as models_router
+from backend.app.routes.websocket import router as websocket_router
+from backend.app.services.data_loader import seed_database_on_first_run
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Application lifespan context manager: handles startup database seeding.
+    """
+    print("[Lifespan] VaultGuard API starting up... Checking database state...")
+    try:
+        seed_database_on_first_run()
+    except Exception as e:
+        print(f"[Lifespan ERROR] Database initialization failed: {e}")
+    yield
+    print("[Lifespan] VaultGuard API shutting down...")
+
+
+app = FastAPI(
+    title="VaultGuard - Small Transaction Fraud Detection API",
+    description="Real-time hybrid ML fraud detection engine for micro-transactions, velocity attacks, card testing, structuring, and merchant anomalies.",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    lifespan=lifespan,
+)
+
+# Enable CORS for React frontend (and all origins during dev)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include API Routers
+app.include_router(analytics_router)
+app.include_router(alerts_router)
+app.include_router(transactions_router)
+app.include_router(entities_router)
+app.include_router(models_router)
+app.include_router(websocket_router)
+
+
+@app.get("/", tags=["Health"])
+def root():
+    """Root endpoint verifying backend status and linking to Swagger UI docs."""
+    return {
+        "status": "online",
+        "service": "VaultGuard Fraud Detection Backend",
+        "version": "1.0.0",
+        "documentation": "/docs",
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run("backend.app.main:app", host="0.0.0.0", port=8000, reload=True)

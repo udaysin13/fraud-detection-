@@ -1,0 +1,59 @@
+{
+  "precision": 0.6796,
+  "recall": 0.9545,
+  "f1_score": 0.794,
+  "roc_auc": 0.9982,
+  "confusion_matrix": [
+    [
+      10681,
+      99
+    ],
+    [
+      10,
+      210
+    ]
+  ],
+  "test_sample_count": 11000,
+  "fraud_count_test": 220,
+  "decision_distribution": {
+    "Allow": 10689,
+    "Block": 216,
+    "Manual Review": 95
+  },
+  "feature_columns": [
+    "amount",
+    "txn_count_1min",
+    "txn_count_10min",
+    "txn_count_1hour",
+    "card_avg_amount",
+    "card_std_amount",
+    "amount_z_score",
+    "is_small_amount",
+    "is_just_below_threshold",
+    "time_since_last_txn",
+    "device_count_24h",
+    "geo_mismatch",
+    "high_risk_bin",
+    "merchant_spike_ratio",
+    "hour_of_day",
+    "day_of_week",
+    "is_night",
+    "merchant_category_crypto_exchange",
+    "merchant_category_digital_goods",
+    "merchant_category_food_delivery",
+    "merchant_category_gaming",
+    "merchant_category_retail",
+    "merchant_category_rideshare",
+    "merchant_category_subscription",
+    "merchant_category_travel",
+    "channel_api",
+    "channel_mobile_app",
+    "channel_pos",
+    "channel_web",
+    "segment_APAC Cards",
+    "segment_AS Cards",
+    "segment_AU Cards",
+    "segment_EU Payments",
+    "segment_ME Cards"
+  ]
+}
