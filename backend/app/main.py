@@ -11,9 +11,13 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
 
+from backend.app.database import get_db
+from backend.app.models.orm import TransactionORM
+from backend.app.schemas.pydantic_schemas import HealthResponse
 from backend.app.routes.analytics import router as analytics_router
 from backend.app.routes.alerts import router as alerts_router
 from backend.app.routes.transactions import router as transactions_router
@@ -21,12 +25,13 @@ from backend.app.routes.entities import router as entities_router
 from backend.app.routes.models_api import router as models_router
 from backend.app.routes.websocket import router as websocket_router
 from backend.app.services.data_loader import seed_database_on_first_run
+from backend.app.services.ml_service import get_model_health
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Application lifespan context manager: handles startup database seeding.
+    Application lifespan context manager: handles startup database seeding and model cache warming.
     """
     print("[Lifespan] VaultGuard API starting up... Checking database state...")
     try:
@@ -38,18 +43,30 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="VaultGuard - Small Transaction Fraud Detection API",
-    description="Real-time hybrid ML fraud detection engine for micro-transactions, velocity attacks, card testing, structuring, and merchant anomalies.",
+    title="VaultGuard - Indian Digital Payment Fraud Detection API",
+    description="Real-time hybrid ML fraud detection engine for Indian UPI, QR, IMPS, and Wallets with leakage-safe velocity engineering and SHAP explainability.",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
 )
 
-# Enable CORS for React frontend (and all origins during dev)
+# Secure CORS configuration: Explicit trusted origins for Vite development and production
+import os
+
+default_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+env_origins = os.getenv("ALLOWED_ORIGINS", "")
+allowed_origins = [o.strip() for o in env_origins.split(",") if o.strip()] if env_origins else default_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -73,6 +90,30 @@ def root():
         "version": "1.0.0",
         "documentation": "/docs",
     }
+
+
+@app.get("/api/health", response_model=HealthResponse, tags=["Health"])
+def health_check(db: Session = Depends(get_db)):
+    """System health check endpoint verifying database connectivity and ML artifacts readiness."""
+    health_info = get_model_health()
+    try:
+        txn_count = db.query(TransactionORM).count()
+        db_status = "connected"
+    except Exception as e:
+        txn_count = 0
+        db_status = f"error: {str(e)}"
+
+    overall_status = "healthy" if health_info["status"] == "ready" and db_status == "connected" else "degraded"
+
+    return HealthResponse(
+        status=overall_status,
+        service="VaultGuard Fraud Detection Backend",
+        version="1.0.0",
+        database=db_status,
+        ml_artifacts=health_info["status"],
+        model_version="v1.0.0-xgb-iso-hybrid",
+        transaction_count=txn_count,
+    )
 
 
 if __name__ == "__main__":

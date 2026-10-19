@@ -3,20 +3,32 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    color-scheme: light;
+  }
+
   body {
-    font-family: 'Outfit', 'Inter', sans-serif;
-    background-color: #F5F6FA;
-    color: #1F2937;
+    font-family: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: #F5F8FC;
+    color: #17243A;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Consistent accessible focus ring */
+  *:focus-visible {
+    outline: 2px solid #0D9488;
+    outline-offset: 2px;
   }
 }
 
-/* Custom scrollbar styling */
+/* Quiet scrollbar for the light workspace. */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #F1F5F9;
+  background: #F5F8FC;
 }
 ::-webkit-scrollbar-thumb {
   background: #CBD5E1;
@@ -24,4 +36,68 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #94A3B8;
+}
+
+/* Normalize remaining legacy dark utility surfaces while pages are migrated. */
+.app-shell [class~="bg-[#0B0F19]"] {
+  background-color: #F5F8FC !important;
+}
+
+.app-shell [class~="bg-[#111827]"] {
+  background-color: #FFFFFF !important;
+  border-color: #E3EAF2 !important;
+}
+
+.app-shell [class~="bg-[#161F30]"] {
+  background-color: #F8FAFC !important;
+  border-color: #E3EAF2 !important;
+}
+
+.app-shell [class~="bg-slate-800"] {
+  background-color: #F1F5F9 !important;
+}
+
+.app-shell [class~="border-slate-800"],
+.app-shell [class~="border-slate-800/80"] {
+  border-color: #E3EAF2 !important;
+}
+
+.app-shell [class~="divide-slate-800/60"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: #E3EAF2 !important;
+}
+
+.app-shell :is([class~="bg-[#111827]"], [class~="bg-[#161F30]"]) :is([class~="text-white"], [class~="text-slate-100"]) {
+  color: #17243A !important;
+}
+
+.app-shell :is([class~="bg-[#111827]"], [class~="bg-[#161F30]"]) :is([class~="text-slate-200"], [class~="text-slate-300"]) {
+  color: #344054 !important;
+}
+
+.app-shell :is([class~="bg-[#111827]"], [class~="bg-[#161F30]"]) :is([class~="text-slate-400"], [class~="text-slate-500"]) {
+  color: #66758A !important;
+}
+
+.app-shell .bg-teal-600 {
+  color: #FFFFFF !important;
+}
+
+.app-shell :is([class~="bg-[#111827]"], [class~="bg-[#161F30]"]) .bg-teal-600,
+.app-shell :is([class~="bg-[#111827]"], [class~="bg-[#161F30]"]) .bg-teal-600 * {
+  color: #FFFFFF !important;
+}
+
+/* Recharts styling for the light financial analytics UI. */
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: #E3EAF2 !important;
+}
+
+.recharts-default-tooltip {
+  background-color: #FFFFFF !important;
+  border: 1px solid #E3EAF2 !important;
+  border-radius: 6px !important;
+  box-shadow: 0 8px 20px -8px rgba(23, 36, 58, 0.2) !important;
+  padding: 8px 12px !important;
+  color: #17243A !important;
 }

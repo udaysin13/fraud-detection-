@@ -1,9 +1,11 @@
 """
 VaultGuard - SQLAlchemy ORM Models
+
+Supports both Indian digital payment schema (Phase 2+) and legacy backward-compatible fields.
 """
 
-from datetime import datetime
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Text
+from datetime import datetime, timezone
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Text, Index
 from backend.app.database import Base
 
 
@@ -13,30 +15,76 @@ class TransactionORM(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     transaction_id = Column(String, unique=True, index=True, nullable=False)
     timestamp = Column(String, index=True, nullable=False)
-    card_id = Column(String, index=True, nullable=False)
-    customer_id = Column(String, index=True, nullable=False)
-    merchant_id = Column(String, index=True, nullable=False)
-    merchant_category = Column(String, index=True, nullable=False)
-    amount = Column(Float, nullable=False)
-    currency = Column(String, nullable=False)
-    country = Column(String, nullable=False)
-    billing_country = Column(String, nullable=False)
-    device_id = Column(String, nullable=False)
-    ip_address = Column(String, nullable=False)
-    is_new_device = Column(Integer, default=0)
-    bin_range = Column(String, nullable=False)
-    channel = Column(String, nullable=False)
-    segment = Column(String, index=True, nullable=False)
-    is_fraud = Column(Integer, default=0)
 
-    # Scored fields
+    # Indian digital payment fields (primary)
+    amount_inr = Column(Float, nullable=True)
+    channel = Column(String, nullable=False, default="UPI_P2P")
+    transaction_type = Column(String, nullable=True)
+    sender_id = Column(String, index=True, nullable=True)
+    beneficiary_id = Column(String, index=True, nullable=True)
+    sender_vpa = Column(String, nullable=True)
+    beneficiary_vpa = Column(String, nullable=True)
+    merchant_id = Column(String, index=True, nullable=True)
+    merchant_category = Column(String, nullable=True)
+    device_id = Column(String, nullable=True)
+    is_new_device = Column(Integer, default=0)
+    sim_change_flag = Column(Integer, default=0)
+    ip_location_state = Column(String, nullable=True)
+    transaction_status = Column(String, default="SUCCESS")
+
+    # Legacy backward-compatible fields (kept for frontend compatibility)
+    card_id = Column(String, index=True, nullable=True)
+    customer_id = Column(String, index=True, nullable=True)
+    amount = Column(Float, nullable=False, default=0.0)
+    currency = Column(String, nullable=True, default="INR")
+    country = Column(String, nullable=True, default="IN")
+    billing_country = Column(String, nullable=True, default="IN")
+    ip_address = Column(String, nullable=True)
+    bin_range = Column(String, nullable=True)
+    segment = Column(String, nullable=True)
+
+    # Labels — only for offline labeled data, never used as inference input
+    is_fraud = Column(Integer, default=0)
+    fraud_pattern = Column(String, nullable=True)
+
+    # Scoring results
     risk_score = Column(Float, default=0.0)
     decision = Column(String, default="Allow")
+    risk_category = Column(String, default="LOW_RISK")
     reasons = Column(Text, default="[]")  # JSON encoded list of reason strings
     status = Column(String, default="Approved")
+    model_version = Column(String, nullable=True)
+    scored_at = Column(String, nullable=True)
+
+    # Source tracking
+    source = Column(String, default="seed")  # "seed" for CSV import, "api" for live predictions
+
+    __table_args__ = (
+        Index("ix_txn_sender_timestamp", "sender_id", "timestamp"),
+        Index("ix_txn_customer_timestamp", "customer_id", "timestamp"),
+        Index("ix_txn_decision", "decision"),
+    )
+
+
+class FraudAlertORM(Base):
+    __tablename__ = "fraud_alerts"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    alert_id = Column(String, unique=True, index=True, nullable=False)
+    transaction_id = Column(String, index=True, nullable=False)
+    risk_score = Column(Float, nullable=False)
+    risk_category = Column(String, nullable=False)
+    reasons = Column(Text, default="[]")  # JSON encoded
+    review_status = Column(String, default="OPEN", index=True)  # OPEN, UNDER_REVIEW, RESOLVED, DISMISSED
+    analyst = Column(String, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+    model_version = Column(String, nullable=True)
 
 
 class AlertORM(Base):
+    """Legacy alerts table — preserved for backward compatibility with existing frontend/tests."""
     __tablename__ = "alerts"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
@@ -46,7 +94,27 @@ class AlertORM(Base):
     time_ago = Column(String, nullable=False)
     status = Column(String, index=True, default="Monitoring")
     assignee = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class ModelMetadataORM(Base):
+    __tablename__ = "model_metadata"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    model_name = Column(String, nullable=False, index=True)
+    model_version = Column(String, unique=True, nullable=False)
+    training_timestamp = Column(String, nullable=True)
+    selected_threshold = Column(Float, nullable=True)
+    precision = Column(Float, nullable=True)
+    recall = Column(Float, nullable=True)
+    f1_score = Column(Float, nullable=True)
+    roc_auc = Column(Float, nullable=True)
+    pr_auc = Column(Float, nullable=True)
+    test_sample_count = Column(Integer, nullable=True)
+    fraud_count_test = Column(Integer, nullable=True)
+    feature_count = Column(Integer, nullable=True)
+    is_active = Column(Integer, default=1)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class CustomerORM(Base):
@@ -83,4 +151,4 @@ class CaseORM(Base):
     risk_score = Column(Float, default=0.0)
     status = Column(String, default="Open")
     assigned_analyst = Column(String, default="Unassigned")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

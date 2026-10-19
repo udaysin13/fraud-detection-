@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   CreditCard,
   Search,
@@ -8,122 +8,190 @@ import {
   Radio,
   Download,
   AlertTriangle,
+  RefreshCw,
+  Eye,
+  SlidersHorizontal,
+  ArrowUpDown,
+  Smartphone,
+  ShieldCheck,
+  ShieldAlert,
 } from 'lucide-react';
 import { useFilter } from '../context/FilterContext';
+import { apiClient } from '../api/client';
+import { BackendErrorBanner } from '../components/BackendErrorBanner';
+import {
+  formatINR,
+  formatTimestamp,
+  getRiskStyle,
+  getChannelLabel,
+} from '../utils/formatters';
 
 export const Transactions = () => {
-  const { searchQuery, setSearchQuery, liveTransactions, wsConnected } = useFilter();
+  const {
+    searchQuery,
+    setSearchQuery,
+    selectedChannel,
+    setSelectedChannel,
+    liveTransactions,
+    wsStatus,
+    setSelectedTransactionId,
+  } = useFilter();
 
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Filters
   const [decisionFilter, setDecisionFilter] = useState('All');
-  const [segmentFilter, setSegmentFilter] = useState('All');
+  const [riskCategoryFilter, setRiskCategoryFilter] = useState('All');
+  const [channelFilter, setChannelFilter] = useState(selectedChannel || 'All');
+  const [sortBy, setSortBy] = useState('newest'); // 'newest' | 'amount_desc' | 'risk_desc'
+
+  // Pagination
   const [page, setPage] = useState(1);
-  const limit = 20;
+  const limit = 25;
 
-  const fetchTransactions = async () => {
+  const fetchTransactions = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      let url = `http://localhost:8000/api/transactions?page=${page}&limit=${limit}`;
-      if (decisionFilter !== 'All') url += `&decision=${encodeURIComponent(decisionFilter)}`;
-      if (segmentFilter !== 'All') url += `&segment=${encodeURIComponent(segmentFilter)}`;
-      if (searchQuery) url += `&search=${encodeURIComponent(searchQuery)}`;
+      const data = await apiClient.getTransactions({
+        page,
+        limit,
+        decision: decisionFilter,
+        risk_category: riskCategoryFilter,
+        channel: channelFilter,
+        search: searchQuery,
+      });
 
-      const res = await fetch(url);
-      const data = await res.json();
-      setTransactions(data);
+      setTransactions(data || []);
     } catch (err) {
       console.error('Failed to fetch transactions:', err);
+      setError(err.message || 'Unable to retrieve transaction records.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, decisionFilter, riskCategoryFilter, channelFilter, searchQuery]);
 
   useEffect(() => {
     fetchTransactions();
-  }, [page, decisionFilter, segmentFilter, searchQuery]);
+  }, [fetchTransactions]);
 
   const handleExportCSV = () => {
-    window.open('http://localhost:8000/api/export?type=csv', '_blank');
+    window.open(apiClient.getExportUrl(), '_blank');
   };
 
+  // Client-side sorting for current page
+  const sortedTransactions = [...transactions].sort((a, b) => {
+    if (sortBy === 'amount_desc') {
+      const amtA = a.amount_inr ?? a.amount ?? 0;
+      const amtB = b.amount_inr ?? b.amount ?? 0;
+      return amtB - amtA;
+    }
+    if (sortBy === 'risk_desc') {
+      return (b.risk_score || 0) - (a.risk_score || 0);
+    }
+    // Default newest
+    return (b.id || 0) - (a.id || 0);
+  });
+
   return (
-    <div className="space-y-6">
-      {/* Live WebSocket Ticker Stream Banner */}
-      <div className="bg-slate-900 text-white p-4 rounded-[16px] shadow-xl border border-slate-800 flex items-center justify-between gap-4 overflow-hidden">
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="w-3 h-3 rounded-full bg-emerald-400 animate-ping"></div>
-          <span className="text-xs font-extrabold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-            <Radio className="w-4 h-4" /> Live WebSocket Feed
+    <div className="space-y-5">
+      {/* Live WebSocket Simulated Stream Ticker Banner */}
+      <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-card-soft flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2.5 shrink-0">
+          <div className="w-2.5 h-2.5 rounded-full bg-teal-400 animate-pulse"></div>
+          <span className="font-extrabold uppercase tracking-wider text-teal-600 flex items-center gap-1.5">
+            <Radio className="w-3.5 h-3.5" />
+            Live Stream Feed (Simulated)
+          </span>
+          <span className="text-[10px] text-slate-500 hidden sm:inline">
+            Status: {wsStatus}
           </span>
         </div>
 
-        <div className="flex-1 overflow-x-auto whitespace-nowrap scrollbar-none py-1 px-4">
-          <div className="flex items-center gap-4 text-xs">
+        <div className="flex-1 min-w-0 overflow-x-auto whitespace-nowrap scrollbar-none py-0.5">
+          <div className="flex items-center gap-2.5 text-xs">
             {liveTransactions.length === 0 ? (
-              <span className="text-slate-400 font-medium">
-                Listening for live transactions (streaming every 3s)...
+              <span className="text-slate-500 italic">
+                Awaiting incoming stream transactions...
               </span>
             ) : (
-              liveTransactions.slice(0, 5).map((t, idx) => (
-                <div
-                  key={t.transaction_id + idx}
-                  className="inline-flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700/60 text-slate-200"
-                >
-                  <span className="font-mono text-slate-400 font-bold">{t.transaction_id}</span>
-                  <span className="font-bold text-white">${t.amount}</span>
-                  <span
-                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                      t.decision === 'Block'
-                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
-                        : t.decision === 'Manual Review'
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                    }`}
+              liveTransactions.slice(0, 4).map((t, idx) => {
+                const style = getRiskStyle(t.decision, t.risk_score);
+                return (
+                  <button
+                    key={t.transaction_id + idx}
+                    onClick={() => setSelectedTransactionId(t.transaction_id)}
+                    className="inline-flex items-center gap-2 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200 text-slate-700 hover:border-slate-300 transition-colors"
                   >
-                    {t.decision} ({t.risk_score})
-                  </span>
-                </div>
-              ))
+                    <span className="font-mono text-teal-600 font-bold">{t.transaction_id}</span>
+                    <span className="font-bold text-slate-800">{formatINR(t.amount_inr ?? t.amount)}</span>
+                    <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold border ${style.bg} ${style.border} ${style.text}`}>
+                      {t.decision} ({t.risk_score})
+                    </span>
+                  </button>
+                );
+              })
             )}
           </div>
         </div>
 
         <button
           onClick={handleExportCSV}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-[#F97316] hover:bg-[#EA580C] text-white rounded-xl text-xs font-bold transition-all shrink-0"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-500 text-slate-800 rounded-lg text-xs font-bold transition-all shrink-0 shadow-sm"
         >
           <Download className="w-3.5 h-3.5" />
           <span>Export CSV</span>
         </button>
       </div>
 
-      {/* Main Table Card */}
-      <div className="bg-white rounded-[16px] border border-gray-200/80 shadow-card-soft p-5">
-        {/* Filter Controls Header */}
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-5 pb-4 border-b border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
-              <CreditCard className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">Transaction Telemetry</h2>
-              <p className="text-xs text-slate-500">Real-time scored ledger across micro-channels</p>
-            </div>
+      {error && (
+        <BackendErrorBanner
+          error={error}
+          onRetry={fetchTransactions}
+          isRetrying={loading}
+        />
+      )}
+
+      {/* Main Transactions Explorer Card */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-card-soft space-y-4">
+        {/* Controls Toolbar: Search & Multi-Filters */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-200">
+          {/* Search */}
+          <div className="relative w-full sm:w-64">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              placeholder="Search by ID, sender, beneficiary..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setPage(1);
+              }}
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-500 focus:outline-none focus:border-teal-500"
+            />
           </div>
 
-          <div className="flex items-center flex-wrap gap-3">
-            {/* Search Input */}
-            <div className="relative min-w-[200px]">
-              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                placeholder="Search Txn ID, Card, Merchant..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
-              />
-            </div>
+          {/* Filter Dropdowns */}
+          <div className="flex items-center gap-2 flex-wrap text-xs">
+            {/* Channel Filter */}
+            <select
+              value={channelFilter}
+              onChange={(e) => {
+                setChannelFilter(e.target.value);
+                setSelectedChannel(e.target.value);
+                setPage(1);
+              }}
+              className="bg-slate-50 border border-slate-200 text-slate-700 rounded-lg px-2.5 py-1.5 font-semibold focus:outline-none focus:border-teal-500"
+            >
+              <option value="All">All Channels</option>
+              <option value="UPI_P2P">UPI P2P</option>
+              <option value="UPI_P2M_QR">UPI P2M QR</option>
+              <option value="WALLET">Digital Wallet</option>
+              <option value="IMPS">IMPS</option>
+              <option value="RUPAY_CARD">RuPay Card</option>
+            </select>
 
             {/* Decision Filter */}
             <select
@@ -132,149 +200,176 @@ export const Transactions = () => {
                 setDecisionFilter(e.target.value);
                 setPage(1);
               }}
-              className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+              className="bg-slate-50 border border-slate-200 text-slate-700 rounded-lg px-2.5 py-1.5 font-semibold focus:outline-none focus:border-teal-500"
             >
               <option value="All">All Decisions</option>
-              <option value="Allow">Allow</option>
+              <option value="Allow">Allow (Low Risk)</option>
               <option value="Manual Review">Manual Review</option>
-              <option value="Block">Block</option>
+              <option value="Block">Block (High Risk)</option>
             </select>
 
-            {/* Segment Filter */}
+            {/* Risk Category Filter */}
             <select
-              value={segmentFilter}
+              value={riskCategoryFilter}
               onChange={(e) => {
-                setSegmentFilter(e.target.value);
+                setRiskCategoryFilter(e.target.value);
                 setPage(1);
               }}
-              className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+              className="bg-slate-50 border border-slate-200 text-slate-700 rounded-lg px-2.5 py-1.5 font-semibold focus:outline-none focus:border-teal-500"
             >
-              <option value="All">All Segments</option>
-              <option value="EU Payments">EU Payments</option>
-              <option value="APAC Cards">APAC Cards</option>
-              <option value="AU Cards">AU Cards</option>
-              <option value="ME Cards">ME Cards</option>
-              <option value="AS Cards">AS Cards</option>
+              <option value="All">All Risk Tiers</option>
+              <option value="LOW_RISK">Low Risk (0 - 40)</option>
+              <option value="REVIEW">Review (41 - 70)</option>
+              <option value="HIGH_RISK">High Risk (71 - 100)</option>
             </select>
+
+            {/* Sort Filter */}
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="bg-slate-50 border border-slate-200 text-slate-700 rounded-lg px-2.5 py-1.5 font-semibold focus:outline-none focus:border-teal-500"
+            >
+              <option value="newest">Sort: Newest First</option>
+              <option value="amount_desc">Sort: Highest Amount</option>
+              <option value="risk_desc">Sort: Highest Risk Score</option>
+            </select>
+
+            <button
+              onClick={fetchTransactions}
+              className="p-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-400 hover:text-slate-800 transition-colors"
+              title="Refresh Transactions Table"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            </button>
           </div>
         </div>
 
         {/* Transactions Table */}
-        <div className="overflow-x-auto rounded-xl border border-gray-200/80">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-[#E5E9F2] text-slate-700 text-[11px] font-bold uppercase tracking-wider border-b border-gray-200">
-                <th className="py-3 px-4">Transaction ID</th>
-                <th className="py-3 px-4">Timestamp</th>
-                <th className="py-3 px-4">Card ID</th>
-                <th className="py-3 px-4 text-right">Amount</th>
-                <th className="py-3 px-4">Merchant & Cat</th>
-                <th className="py-3 px-4">Country / Billing</th>
-                <th className="py-3 px-4 text-center">Risk Score</th>
-                <th className="py-3 px-4">Decision</th>
-                <th className="py-3 px-4">Top Reason</th>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs text-slate-600">
+            <thead className="bg-slate-50 text-slate-400 font-semibold border-b border-slate-200">
+              <tr>
+                <th className="py-2.5 px-3">Transaction ID</th>
+                <th className="py-2.5 px-3">Timestamp</th>
+                <th className="py-2.5 px-3">Channel / Type</th>
+                <th className="py-2.5 px-3">Amount</th>
+                <th className="py-2.5 px-3">Parties (Sender / Beneficiary)</th>
+                <th className="py-2.5 px-3">Risk Assessment</th>
+                <th className="py-2.5 px-3">Decision</th>
+                <th className="py-2.5 px-3 text-right">Details</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 text-xs text-slate-700 font-medium">
+            <tbody className="divide-y divide-slate-800/60 font-medium">
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-400">
-                    Loading transactions...
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
+                    <RefreshCw className="w-6 h-6 animate-spin text-teal-600 mx-auto mb-2" />
+                    <p>Querying verified records from database...</p>
                   </td>
                 </tr>
-              ) : transactions.length === 0 ? (
+              ) : sortedTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-400">
-                    No transactions match current filters.
+                  <td colSpan={8} className="py-12 text-center text-slate-500">
+                    <AlertTriangle className="w-6 h-6 text-slate-600 mx-auto mb-2" />
+                    <p>No transactions matching the active filters found.</p>
                   </td>
                 </tr>
               ) : (
-                transactions.map((t) => (
-                  <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="py-3 px-4 font-mono font-bold text-slate-900">
-                      {t.transaction_id}
-                    </td>
-                    <td className="py-3 px-4 text-slate-500 text-[11px] font-mono">
-                      {t.timestamp}
-                    </td>
-                    <td className="py-3 px-4 font-mono text-slate-800">{t.card_id}</td>
-                    <td className="py-3 px-4 text-right font-extrabold text-slate-900">
-                      ${t.amount.toFixed(2)}
-                    </td>
-                    <td className="py-3 px-4">
-                      <div>
-                        <p className="font-bold text-slate-800">{t.merchant_id}</p>
-                        <p className="text-[10px] text-slate-400 capitalize">{t.merchant_category}</p>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-semibold text-slate-800">{t.country}</span>
-                        {t.country !== t.billing_country && (
-                          <span className="text-[10px] text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 font-bold">
-                            vs {t.billing_country}
+                sortedTransactions.map((t) => {
+                  const style = getRiskStyle(t.decision, t.risk_score);
+                  const sender = t.sender_vpa || t.sender_id || t.customer_id || '—';
+                  const bene = t.beneficiary_vpa || t.beneficiary_id || t.merchant_id || '—';
+
+                  return (
+                    <tr
+                      key={t.id}
+                      onClick={() => setSelectedTransactionId(t.transaction_id)}
+                      className="hover:bg-slate-50 transition-colors cursor-pointer"
+                    >
+                      <td className="py-3 px-3 font-mono font-bold text-teal-600">
+                        {t.transaction_id}
+                      </td>
+                      <td className="py-3 px-3 text-[11px] text-slate-400 whitespace-nowrap">
+                        {formatTimestamp(t.timestamp)}
+                      </td>
+                      <td className="py-3 px-3 text-[11px]">
+                        <span className="font-semibold text-slate-800 block">
+                          {getChannelLabel(t.channel)}
+                        </span>
+                        <span className="text-slate-500">
+                          {t.transaction_type || 'Transfer'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 font-bold text-slate-800 whitespace-nowrap">
+                        {formatINR(t.amount_inr ?? t.amount)}
+                      </td>
+                      <td className="py-3 px-3 text-[11px] max-w-xs truncate">
+                        <span className="text-slate-600 font-mono block truncate" title={sender}>
+                          From: {sender}
+                        </span>
+                        <span className="text-slate-500 font-mono block truncate" title={bene}>
+                          To: {bene}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`font-bold font-mono ${style.text}`}>
+                            {t.risk_score}
                           </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <span
-                        className={`inline-block font-mono font-bold px-2 py-0.5 rounded text-xs ${
-                          t.risk_score > 70
-                            ? 'bg-rose-100 text-rose-700'
-                            : t.risk_score > 40
-                            ? 'bg-amber-100 text-amber-700'
-                            : 'bg-emerald-100 text-emerald-700'
-                        }`}
-                      >
-                        {t.risk_score}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span
-                        className={`inline-block px-3 py-1 rounded-full text-[11px] font-bold border ${
-                          t.decision === 'Block'
-                            ? 'bg-rose-50 text-rose-600 border-rose-200'
-                            : t.decision === 'Manual Review'
-                            ? 'bg-amber-50 text-amber-600 border-amber-200'
-                            : 'bg-emerald-50 text-emerald-600 border-emerald-200'
-                        }`}
-                      >
-                        {t.decision}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-slate-500 text-[11px] truncate max-w-[200px]">
-                      {t.reasons && t.reasons.length > 0 ? t.reasons[0] : 'Standard'}
-                    </td>
-                  </tr>
-                ))
+                          <span className="text-[10px] text-slate-500">/ 100</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 block truncate">
+                          {t.risk_category || 'LOW_RISK'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${style.bg} ${style.border} ${style.text}`}>
+                          {t.decision}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-right">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedTransactionId(t.transaction_id);
+                          }}
+                          className="p-1.5 bg-slate-50 hover:bg-slate-100 text-teal-600 rounded-lg transition-colors border border-slate-200 hover:border-slate-300"
+                          title="View Full Transaction Context"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
 
-        {/* Pagination Footer */}
-        <div className="flex items-center justify-between pt-4 mt-2">
-          <p className="text-xs text-slate-500">
-            Showing Page <strong>{page}</strong> ({transactions.length} records)
-          </p>
+        {/* Pagination Bar */}
+        <div className="flex items-center justify-between pt-3 border-t border-slate-200 text-xs text-slate-400">
+          <span>
+            Page <strong className="text-slate-800">{page}</strong> (showing up to {limit} records)
+          </span>
 
           <div className="flex items-center gap-2">
             <button
-              disabled={page === 1}
-              onClick={() => setPage(page - 1)}
-              className="p-2 border border-gray-200 rounded-xl hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-transparent transition-colors text-slate-600"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1 || loading}
+              className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 text-slate-600 rounded-lg border border-slate-200 transition-colors flex items-center gap-1"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-3.5 h-3.5" />
+              <span>Previous</span>
             </button>
-            <span className="text-xs font-bold text-slate-800 px-3 py-1.5 bg-gray-100 rounded-xl">
-              {page}
-            </span>
+
             <button
-              onClick={() => setPage(page + 1)}
-              className="p-2 border border-gray-200 rounded-xl hover:bg-gray-100 transition-colors text-slate-600"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={transactions.length < limit || loading}
+              className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 text-slate-600 rounded-lg border border-slate-200 transition-colors flex items-center gap-1"
             >
-              <ChevronRight className="w-4 h-4" />
+              <span>Next</span>
+              <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>

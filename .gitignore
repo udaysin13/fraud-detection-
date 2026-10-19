@@ -24,9 +24,16 @@ env/
 .coverage
 htmlcov/
 
-# Environment variables & OS files
+# Environment variables & secrets
 .env
+.env.*
 .env.local
+*.env
+frontend/.env
+backend/.env
+
+# Logs & temp files
+*.log
 .DS_Store
 Thumbs.db
 .vscode/

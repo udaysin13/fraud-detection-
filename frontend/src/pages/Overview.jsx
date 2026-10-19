@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   PieChart,
@@ -6,467 +6,632 @@ import {
   Cell,
   LineChart,
   Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  Legend,
 } from 'recharts';
 import {
-  Filter,
-  ArrowUpRight,
   ShieldAlert,
   AlertTriangle,
-  ChevronRight,
   TrendingUp,
+  Activity,
+  CreditCard,
+  CheckCircle2,
+  XCircle,
+  ArrowRight,
   RefreshCw,
+  Cpu,
+  Database,
+  Radio,
+  Clock,
+  Layers,
 } from 'lucide-react';
 import { useFilter } from '../context/FilterContext';
+import { apiClient } from '../api/client';
+import { KpiCard } from '../components/KpiCard';
+import { BackendErrorBanner } from '../components/BackendErrorBanner';
 import { AlertDetailDrawer } from '../components/AlertDetailDrawer';
+import {
+  formatINR,
+  formatIndianNumber,
+  formatTimestamp,
+  getRiskStyle,
+  getChannelLabel,
+} from '../utils/formatters';
 
 export const Overview = () => {
-  const { region, timeRange, currency, searchQuery } = useFilter();
+  const {
+    timeRange,
+    selectedChannel,
+    setSelectedTransactionId,
+    backendHealth,
+    healthLoading,
+    checkHealth,
+    liveTransactions,
+    wsStatus,
+  } = useFilter();
 
-  const [riskData, setRiskData] = useState(null);
+  const [overview, setOverview] = useState(null);
+  const [modelMetrics, setModelMetrics] = useState(null);
   const [trendData, setTrendData] = useState([]);
-  const [alerts, setAlerts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [riskSummary, setRiskSummary] = useState(null);
+  const [recentSuspicious, setRecentSuspicious] = useState([]);
+  const [recentAlerts, setRecentAlerts] = useState([]);
   const [selectedAlert, setSelectedAlert] = useState(null);
-  const [showFilterPanel, setShowFilterPanel] = useState(false);
 
-  // Fetch telemetry data from backend endpoints
-  const fetchData = async () => {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [retrying, setRetrying] = useState(false);
+
+  const fetchDashboardData = useCallback(async () => {
     setLoading(true);
+    setError(null);
+
     try {
-      const [riskRes, trendRes, alertsRes] = await Promise.all([
-        fetch('http://localhost:8000/api/risk-score'),
-        fetch(`http://localhost:8000/api/trend?range=${timeRange}`),
-        fetch(`http://localhost:8000/api/alerts?limit=6`),
+      const [overviewRes, trendRes, riskRes, suspiciousRes, alertsRes, metricsRes] = await Promise.all([
+        apiClient.getAnalyticsOverview(),
+        apiClient.getTrend(timeRange),
+        apiClient.getRiskScoreSummary(),
+        apiClient.getTransactions({ limit: 6, risk_category: 'HIGH_RISK' }),
+        apiClient.getAlerts({ limit: 5 }),
+        apiClient.getModelMetrics().catch(() => null),
       ]);
 
-      const riskJson = await riskRes.json();
-      const trendJson = await trendRes.json();
-      const alertsJson = await alertsRes.json();
-
-      setRiskData(riskJson);
-      setTrendData(trendJson);
-      setAlerts(alertsJson);
-    } catch (error) {
-      console.error('Error fetching overview metrics:', error);
+      setOverview(overviewRes);
+      setTrendData(trendRes || []);
+      setRiskSummary(riskRes);
+      setRecentSuspicious(suspiciousRes || []);
+      setRecentAlerts(alertsRes || []);
+      setModelMetrics(metricsRes);
+    } catch (err) {
+      console.error('Failed to fetch overview data:', err);
+      setError(err.message || 'Unable to connect to VaultGuard backend service.');
     } finally {
       setLoading(false);
+      setRetrying(false);
     }
-  };
+  }, [timeRange]);
 
   useEffect(() => {
-    fetchData();
-  }, [region, timeRange, currency]);
+    fetchDashboardData();
+  }, [fetchDashboardData]);
 
-  // Handle alert status update
+  const handleRetry = () => {
+    setRetrying(true);
+    checkHealth();
+    fetchDashboardData();
+  };
+
   const handleUpdateAlertStatus = async (alertId, newStatus) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/alerts/${alertId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
-      if (res.ok) {
-        const updated = await res.json();
-        setAlerts((prev) =>
-          prev.map((a) => (a.id === alertId ? updated : a))
-        );
-        if (selectedAlert && selectedAlert.id === alertId) {
-          setSelectedAlert(updated);
-        }
+      const updated = await apiClient.updateAlert(alertId, { status: newStatus });
+      setRecentAlerts((prev) =>
+        prev.map((a) => (a.id === alertId ? updated : a))
+      );
+      if (selectedAlert && selectedAlert.id === alertId) {
+        setSelectedAlert(updated);
       }
     } catch (err) {
       console.error('Failed to update alert:', err);
     }
   };
 
-  // Filter alerts by search query
-  const filteredAlerts = alerts.filter(
-    (a) =>
-      a.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      a.alert_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      a.segment.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Risk Distribution Data for Donut Chart
+  const riskDistributionData = overview
+    ? [
+        { name: 'Low Risk (Allow)', value: overview.total_allowed, color: '#10B981' },
+        { name: 'Manual Review', value: overview.total_review, color: '#F59E0B' },
+        { name: 'Blocked (High Risk)', value: overview.total_blocked, color: '#EF4444' },
+      ]
+    : [];
 
-  // Donut chart data
-  const flaggedCount = riskData?.flagged_count || 1549;
-  const pieData = [
-    { name: 'Flagged Risk', value: flaggedCount, color: '#F97316' },
-    { name: 'Normal', value: 55000 - flaggedCount, color: '#E5E7EB' },
-  ];
-
-  const topContributorsList = [
-    { name: 'Unusual velocity', pct: 28.5 },
-    { name: 'New device surge', pct: 24.2 },
-    { name: 'Geo mismatch', pct: 21.0 },
-    { name: 'High-risk BIN range', pct: 14.8 },
-    { name: 'Merchant anomaly', pct: 11.5 },
-  ];
+  // Top Risk Factors / Contributors
+  const topContributors = riskSummary?.top_contributors || [];
 
   return (
     <div className="space-y-6">
-      {/* Top Title & Subtitle Banner */}
-      <div className="flex flex-wrap items-center justify-between gap-4 bg-white rounded-[16px] border border-gray-200/80 p-5 shadow-card-soft">
-        <div>
-          <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-            Risk Overview
-          </h2>
-          <p className="text-xs font-medium text-slate-500 mt-0.5">
-            Real-time monitoring of transaction risk and fraud indications
-          </p>
+      {/* Backend Error Banner if API connection fails */}
+      {error && (
+        <BackendErrorBanner
+          error={error}
+          onRetry={handleRetry}
+          isRetrying={retrying}
+        />
+      )}
+
+      {/* Model & System Health Readiness Strip */}
+      <div className="bg-[#111827] border border-slate-800 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-card-dark text-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-teal-500/10 border border-teal-500/20 text-teal-400 flex items-center justify-center shrink-0">
+            <Cpu className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-white text-sm">
+                VaultGuard model: {backendHealth?.model_version || 'Version unavailable'}
+              </span>
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                Academic prototype
+              </span>
+            </div>
+            <p className="text-slate-400 text-[11px] mt-0.5">
+              Synthetic Indian digital-payment data; estimates may be incorrect.
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowFilterPanel(!showFilterPanel)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
-              showFilterPanel
-                ? 'bg-[#1B212C] text-white border-[#1B212C]'
-                : 'bg-gray-50 text-slate-700 border-gray-200 hover:bg-gray-100'
-            }`}
-          >
-            <Filter className="w-3.5 h-3.5 text-[#F97316]" />
-            <span>Filters</span>
-          </button>
+        <div className="flex items-center gap-4 text-[11px]">
+          <div className="flex items-center gap-1.5 text-slate-300">
+            <Database className="w-3.5 h-3.5 text-teal-400" />
+                <span>Database records: </span>
+            <strong className="text-white">
+              {formatIndianNumber(overview?.total_transactions || backendHealth?.transaction_count || 0)}
+            </strong>
+          </div>
+
+          <div className="flex items-center gap-1.5 text-slate-300">
+            <Radio className={`w-3.5 h-3.5 ${wsStatus === 'connected' ? 'text-teal-400 animate-pulse' : 'text-slate-500'}`} />
+                <span>Simulated feed: </span>
+            <strong className={wsStatus === 'connected' ? 'text-teal-400' : 'text-slate-400'}>
+              {wsStatus === 'connected' ? 'Connected' : wsStatus === 'reconnecting' ? 'Reconnecting' : 'Disconnected'}
+            </strong>
+          </div>
 
           <button
-            onClick={fetchData}
-            className="p-2 bg-gray-50 hover:bg-gray-100 text-slate-600 border border-gray-200 rounded-xl transition-colors"
-            title="Refresh Metrics"
+            onClick={handleRetry}
+            disabled={loading}
+            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors border border-slate-800"
+            title="Refresh Dashboard Metrics"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
 
-      {/* Optional Active Filters Indicator Bar */}
-      {showFilterPanel && (
-        <div className="bg-slate-900 text-white p-4 rounded-[16px] flex flex-wrap items-center justify-between gap-3 text-xs animate-in slide-in-from-top-2">
-          <div className="flex items-center gap-4">
-            <span className="font-bold text-slate-400">Active Scope:</span>
-            <span className="bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 font-semibold">
-              Region: <strong className="text-[#F97316]">{region}</strong>
-            </span>
-            <span className="bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 font-semibold">
-              Window: <strong className="text-[#14B8A6]">{timeRange}</strong>
-            </span>
-            <span className="bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 font-semibold">
-              Currency: <strong className="text-white">{currency}</strong>
-            </span>
-          </div>
-          <button
-            onClick={() => setShowFilterPanel(false)}
-            className="text-xs text-slate-400 hover:text-white underline"
-          >
-            Hide Filters
-          </button>
+      {/* KPI Metrics Cards Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard
+          title="Transactions Analyzed"
+          value={formatIndianNumber(overview?.total_transactions || 0)}
+          subtitle="Records in the database"
+          icon={Activity}
+          tooltip="Count of persisted transaction records currently in the database."
+          accentColor="teal"
+          loading={loading}
+        />
+
+        <KpiCard
+          title="Dataset Fraud Labels"
+          value={formatIndianNumber(overview?.dataset_fraud_labels || 0)}
+          subtitle="Ground-truth labels in stored data"
+          icon={ShieldAlert}
+          tooltip="Count of records labeled as fraud in the dataset; this is separate from model risk flags."
+          accentColor="rose"
+          loading={loading}
+        />
+
+        <KpiCard
+          title="High-Risk Transactions"
+          value={formatIndianNumber(overview?.total_blocked || 0)}
+          subtitle={`${formatIndianNumber(overview?.total_fraud_flagged || 0)} records have risk score above 40`}
+          icon={AlertTriangle}
+          tooltip="High-risk decision count from the database. The companion count includes records with a risk score above 40."
+          accentColor="amber"
+          loading={loading}
+        />
+
+        <KpiCard
+          title="Model Performance"
+          value={modelMetrics ? `${(modelMetrics.f1_score * 100).toFixed(1)}% F1` : '—'}
+          subtitle="Synthetic holdout; not real-world accuracy"
+          icon={Cpu}
+          tooltip="F1 score reported by the saved model evaluation metrics for the synthetic chronological test split."
+          accentColor="blue"
+          loading={loading}
+        />
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-slate-800">Transaction risk overview</h2>
+          <p className="text-xs text-slate-500">Database analytics and explicitly simulated stream events are shown separately.</p>
         </div>
-      )}
+        <Link to="/fraud-detection" className="inline-flex items-center gap-2 rounded-md bg-[#0F766E] px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 focus-visible:outline-offset-2">
+          <ShieldAlert className="h-4 w-4" aria-hidden="true" />
+          Analyze a Transaction
+        </Link>
+      </div>
 
-      {/* Grid Row 1: Health Score Card & Trend Timeline Card */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Card 1: Risk Health Score Card (5 Cols) */}
-        <div className="lg:col-span-5 bg-white rounded-[16px] border border-gray-200/80 shadow-card-soft p-5 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-bold text-slate-900">
-                Risk Health Score
+      {/* Charts Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        {/* Main Trend Time-Series Chart (8 Cols) */}
+        <div className="lg:col-span-8 bg-[#111827] border border-slate-800 rounded-xl p-5 shadow-card-dark flex flex-col justify-between">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-4">
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <span>Risk decisions over time</span>
+                <span className="text-[10px] font-normal px-2 py-0.5 rounded bg-slate-800 text-teal-400">
+                  Range: {timeRange}
+                </span>
               </h3>
-              <a
-                href="#contributors"
-                className="text-xs font-bold text-[#F97316] hover:underline flex items-center gap-0.5"
-              >
-                <span>View details</span>
-                <ArrowUpRight className="w-3.5 h-3.5" />
-              </a>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Persisted transaction counts by time bucket and decision category
+              </p>
             </div>
+          </div>
 
-            {/* Donut Chart with Centered Count */}
-            <div className="relative h-48 w-full flex items-center justify-center my-2">
+          <div className="h-64 sm:h-72 w-full">
+            {loading ? (
+              <div className="h-full flex items-center justify-center">
+                <RefreshCw className="w-6 h-6 animate-spin text-teal-400" />
+              </div>
+            ) : trendData.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-slate-500 text-xs">
+                <Clock className="w-8 h-8 mb-2 opacity-50" />
+                <p>No telemetry recorded for the selected window.</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis
+                    dataKey="timestamp"
+                    stroke="#64748B"
+                    tick={{ fill: '#94A3B8', fontSize: 10 }}
+                    tickFormatter={(val) => val.split(' ').pop() || val}
+                  />
+                  <YAxis stroke="#64748B" tick={{ fill: '#94A3B8', fontSize: 10 }} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#111827',
+                      borderColor: '#1F293D',
+                      borderRadius: '8px',
+                      color: '#F8FAFC',
+                      fontSize: '11px',
+                    }}
+                  />
+                  <Legend
+                    wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }}
+                    iconType="circle"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="blocked"
+                    name="Blocked (High Risk)"
+                    stroke="#EF4444"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="manual_review"
+                    name="Manual Review"
+                    stroke="#F59E0B"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="suspicious"
+                    name="Total Flagged (>40)"
+                    stroke="#0D9488"
+                    strokeWidth={2}
+                    strokeDasharray="4 4"
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
+
+        {/* Risk Distribution Donut Chart (4 Cols) */}
+        <div className="lg:col-span-4 bg-[#111827] border border-slate-800 rounded-xl p-5 shadow-card-dark flex flex-col justify-between">
+          <div className="pb-3 border-b border-slate-800/80 mb-3">
+            <h3 className="text-sm font-bold text-white">Risk Category Breakdown</h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Decisions distribution on scored population
+            </p>
+          </div>
+
+          <div className="h-52 w-full relative flex items-center justify-center">
+            {loading ? (
+              <RefreshCw className="w-6 h-6 animate-spin text-teal-400" />
+            ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={pieData}
+                    data={riskDistributionData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={62}
-                    outerRadius={82}
-                    startAngle={90}
-                    endAngle={-270}
+                    innerRadius={55}
+                    outerRadius={80}
+                    paddingAngle={3}
                     dataKey="value"
-                    stroke="none"
                   >
-                    {pieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    {riskDistributionData.map((entry, idx) => (
+                      <Cell key={`cell-${idx}`} fill={entry.color} />
                     ))}
                   </Pie>
+                  <Tooltip
+                    formatter={(val) => [formatIndianNumber(val), 'Count']}
+                    contentStyle={{
+                      backgroundColor: '#111827',
+                      borderColor: '#1F293D',
+                      borderRadius: '8px',
+                      color: '#F8FAFC',
+                      fontSize: '11px',
+                    }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
-
-              {/* Centered Donut Label */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
-                  {loading ? '...' : flaggedCount.toLocaleString()}
-                </span>
-                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                  Flagged Txns
-                </span>
-              </div>
-            </div>
-
-            {/* Change Percentage Pill */}
-            <div className="flex justify-center mb-5">
-              <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold bg-orange-50 text-[#F97316] border border-orange-200 shadow-sm">
-                <TrendingUp className="w-3.5 h-3.5" />
-                <span>+5.2% vs prev window ▲</span>
-              </span>
-            </div>
+            )}
           </div>
 
-          {/* Top Contributors List */}
-          <div id="contributors" className="space-y-3 pt-3 border-t border-gray-100">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Top Risk Contributors
-            </h4>
-            <div className="space-y-2.5">
-              {topContributorsList.map((item) => (
-                <div key={item.name} className="space-y-1">
-                  <div className="flex justify-between items-center text-xs font-semibold">
-                    <span className="text-slate-700">{item.name}</span>
-                    <span className="text-slate-900 font-bold">{item.pct}%</span>
-                  </div>
-                  <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
-                    <div
-                      className="bg-[#F97316] h-full rounded-full transition-all duration-500"
-                      style={{ width: `${item.pct * 3}%` }}
-                    ></div>
-                  </div>
+          {/* Legend Items */}
+          <div className="space-y-1.5 pt-2 border-t border-slate-800 text-xs">
+            {riskDistributionData.map((item, idx) => (
+              <div key={idx} className="flex items-center justify-between text-[11px]">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                  <span className="text-slate-300">{item.name}</span>
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Card 2: Risk Trend Timeline Card (7 Cols) */}
-        <div className="lg:col-span-7 bg-white rounded-[16px] border border-gray-200/80 shadow-card-soft p-5 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Risk Trend Timeline
-                </h3>
-                <p className="text-xs text-slate-400 font-medium">
-                  Hourly velocity & threat breakdown ({timeRange})
-                </p>
+                <span className="font-mono font-bold text-white">
+                  {formatIndianNumber(item.value)}
+                </span>
               </div>
-              <button
-                onClick={() => alert('Comparing current period against baseline 30-day average.')}
-                className="text-xs font-bold text-[#F97316] hover:underline flex items-center gap-0.5"
-              >
-                <span>Compare periods</span>
-                <ArrowUpRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* Recharts Line Chart */}
-            <div className="h-64 w-full mt-2">
-              {loading ? (
-                <div className="h-full flex items-center justify-center text-xs text-slate-400">
-                  Loading timeline graph...
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                    <XAxis
-                      dataKey="timestamp"
-                      tick={{ fontSize: 10, fill: '#64748B' }}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      tick={{ fontSize: 10, fill: '#64748B' }}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: '#1B212C',
-                        borderColor: '#334155',
-                        borderRadius: '12px',
-                        color: '#fff',
-                        fontSize: '12px',
-                      }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="suspicious"
-                      name="Suspicious Flagged"
-                      stroke="#F97316"
-                      strokeWidth={2.5}
-                      dot={{ r: 3, fill: '#F97316' }}
-                      activeDot={{ r: 6 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="blocked"
-                      name="Blocked"
-                      stroke="#1B212C"
-                      strokeWidth={2.5}
-                      dot={{ r: 3, fill: '#1B212C' }}
-                      activeDot={{ r: 6 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="manual_review"
-                      name="Manual Reviews"
-                      stroke="#14B8A6"
-                      strokeWidth={2.5}
-                      dot={{ r: 3, fill: '#14B8A6' }}
-                      activeDot={{ r: 6 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-          </div>
-
-          {/* Styled Legend in Rounded Grey Bar */}
-          <div className="mt-4 pt-3 border-t border-gray-100 flex justify-center">
-            <div className="bg-slate-100 rounded-full px-5 py-2 flex flex-wrap items-center justify-center gap-6 text-xs font-bold text-slate-700 shadow-inner">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#F97316]"></span>
-                <span>Suspicious Flagged</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#1B212C]"></span>
-                <span>Blocked</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#14B8A6]"></span>
-                <span>Manual Reviews</span>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
       </div>
 
-      {/* Grid Row 2: Top Alerts & Incidents Table Card */}
-      <div className="bg-white rounded-[16px] border border-gray-200/80 shadow-card-soft p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-base font-bold text-slate-900">
-              Top Alerts & Incidents
-            </h3>
-            <p className="text-xs text-slate-400 font-medium">
-              High priority micro-fraud vectors and security rule triggers
+      {/* Secondary Row: Top Risk Contributors & Live Ticker Feed */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        {/* Top Anomaly Contributors (5 Cols) */}
+        <div className="lg:col-span-5 bg-[#111827] border border-slate-800 rounded-xl p-5 shadow-card-dark">
+          <div className="pb-3 border-b border-slate-800/80 mb-4">
+            <h3 className="text-sm font-bold text-white">Common stored reason text</h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Most common reason strings among flagged database records; not a SHAP importance summary
             </p>
           </div>
-          <Link
-            to="/alerts"
-            className="text-xs font-bold text-[#F97316] hover:underline flex items-center gap-0.5"
-          >
-            <span>View all alerts</span>
-            <ChevronRight className="w-4 h-4" />
-          </Link>
+
+          <div className="space-y-3">
+            {topContributors.length === 0 ? (
+              <p className="text-xs text-slate-500 py-6 text-center">No contributor data available.</p>
+            ) : (
+              topContributors.map((c, i) => (
+                <div key={i} className="space-y-1 text-xs">
+                  <div className="flex justify-between text-slate-300">
+                    <span className="truncate pr-2 font-medium">{c.name}</span>
+                    <span className="font-mono text-teal-400 font-bold shrink-0">{c.percentage}%</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-teal-500 rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min(c.percentage * 2, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
 
-        {/* Alerts Table */}
-        <div className="overflow-x-auto rounded-xl border border-gray-200/80">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-[#E5E9F2] text-slate-700 text-[11px] font-bold uppercase tracking-wider border-b border-gray-200">
-                <th className="py-3 px-4 w-12 text-center">Severity</th>
-                <th className="py-3 px-4">Alert Title & Code</th>
-                <th className="py-3 px-4">Segment</th>
-                <th className="py-3 px-4">Started</th>
-                <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4">Assignee</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 text-xs text-slate-700 font-medium">
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-400">
-                    Loading security alerts...
-                  </td>
-                </tr>
-              ) : filteredAlerts.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-400">
-                    No active alerts found matching search criteria.
-                  </td>
-                </tr>
-              ) : (
-                filteredAlerts.map((alert) => (
-                  <tr
-                    key={alert.id}
-                    onClick={() => setSelectedAlert(alert)}
-                    className="hover:bg-slate-50 transition-colors cursor-pointer group"
+        {/* Live WebSocket Simulated Feed (7 Cols) */}
+        <div className="lg:col-span-7 bg-[#111827] border border-slate-800 rounded-xl p-5 shadow-card-dark flex flex-col justify-between">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-3">
+            <div className="flex items-center gap-2">
+              <Radio className={`w-4 h-4 ${wsStatus === 'connected' ? 'text-teal-400 animate-pulse' : 'text-slate-500'}`} />
+              <div>
+                <h3 className="text-sm font-bold text-white">Live Stream Ticker (Simulated)</h3>
+                <span className="text-[10px] text-slate-500 block">
+                  Simulated events for real-time latency evaluation • Distinct from database history
+                </span>
+              </div>
+            </div>
+
+            <Link
+              to="/transactions"
+              className="text-xs text-teal-400 hover:text-teal-300 flex items-center gap-1 font-bold"
+            >
+              <span>Explore All</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+
+          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+            {liveTransactions.length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-500 space-y-1">
+                <Clock className="w-6 h-6 mx-auto opacity-50 mb-1" />
+                <p>Awaiting live transactions from WebSocket endpoint...</p>
+                <p className="text-[11px] text-slate-600">Simulated transactions stream every ~3s</p>
+              </div>
+            ) : (
+              liveTransactions.slice(0, 5).map((t, idx) => {
+                const style = getRiskStyle(t.decision, t.risk_score);
+                return (
+                  <div
+                    key={t.transaction_id + idx}
+                    onClick={() => setSelectedTransactionId(t.transaction_id)}
+                    className="bg-[#161F30] border border-slate-800 rounded-lg p-2.5 flex items-center justify-between gap-3 text-xs hover:border-slate-700 transition-colors cursor-pointer"
                   >
-                    {/* Severity Icon */}
-                    <td className="py-3.5 px-4 text-center">
-                      <div className="w-7 h-7 rounded-lg bg-orange-100 text-[#F97316] flex items-center justify-center mx-auto group-hover:scale-110 transition-transform">
-                        <AlertTriangle className="w-4 h-4" />
-                      </div>
-                    </td>
-
-                    {/* Alert Code & Title */}
-                    <td className="py-3.5 px-4">
+                    <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-[11px] font-bold text-slate-900 bg-gray-100 px-2 py-0.5 rounded border border-gray-200">
-                          {alert.alert_code}
+                        <span className="font-mono text-teal-400 font-bold truncate">
+                          {t.transaction_id}
                         </span>
-                        <span className="font-semibold text-slate-900 group-hover:text-[#F97316] transition-colors">
-                          {alert.title}
+                        <span className="text-[10px] text-slate-500">
+                          {getChannelLabel(t.channel)}
                         </span>
                       </div>
-                    </td>
+                      <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                        {t.reasons ? t.reasons[0] : 'Normal parameters'}
+                      </p>
+                    </div>
 
-                    {/* Segment */}
-                    <td className="py-3.5 px-4">
-                      <span className="inline-block px-2.5 py-1 rounded-lg bg-gray-100 text-slate-700 font-semibold text-[11px]">
-                        {alert.segment}
+                    <div className="text-right shrink-0">
+                      <div className="font-bold text-white">
+                        {formatINR(t.amount_inr ?? t.amount)}
+                      </div>
+                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border mt-0.5 ${style.bg} ${style.border} ${style.text}`}>
+                        {t.decision} ({t.risk_score})
                       </span>
-                    </td>
-
-                    {/* Started */}
-                    <td className="py-3.5 px-4 text-slate-500 font-mono text-[11px]">
-                      {alert.time_ago}
-                    </td>
-
-                    {/* Status Badge */}
-                    <td className="py-3.5 px-4">
-                      <span
-                        className={`inline-block px-3 py-1 rounded-full text-[11px] font-bold border ${
-                          alert.status === 'Monitoring'
-                            ? 'bg-orange-50 text-[#F97316] border-orange-200'
-                            : alert.status === 'Investigating'
-                            ? 'bg-teal-50 text-[#14B8A6] border-teal-200'
-                            : 'bg-[#1B212C] text-white border-[#1B212C]'
-                        }`}
-                      >
-                        {alert.status}
-                      </span>
-                    </td>
-
-                    {/* Owner */}
-                    <td className="py-3.5 px-4 font-semibold text-slate-800">
-                      {alert.assignee}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Slide-Over Alert Detail Drawer */}
+      {/* Bottom Grid: Recent High-Risk Transactions & Security Alerts */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        {/* Recent High-Risk Transactions Table (7 Cols) */}
+        <div className="lg:col-span-7 bg-[#111827] border border-slate-800 rounded-xl p-5 shadow-card-dark">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-4">
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                <ShieldAlert className="w-4 h-4 text-rose-400" />
+                Recent High-Risk Transactions
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Database records flagged by XGBoost + Isolation Forest
+              </p>
+            </div>
+            <Link
+              to="/transactions?decision=Block"
+              className="text-xs text-teal-400 hover:text-teal-300 font-bold flex items-center gap-1"
+            >
+              <span>View All Blocked</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-300">
+              <thead className="bg-[#161F30] text-slate-400 font-semibold border-b border-slate-800">
+                <tr>
+                  <th className="py-2 px-3">Transaction ID</th>
+                  <th className="py-2 px-3">Channel</th>
+                  <th className="py-2 px-3">Amount</th>
+                  <th className="py-2 px-3">Risk Score</th>
+                  <th className="py-2 px-3">Decision</th>
+                  <th className="py-2 px-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 font-medium">
+                {recentSuspicious.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-6 text-center text-slate-500 italic">
+                      No high-risk transactions recorded.
+                    </td>
+                  </tr>
+                ) : (
+                  recentSuspicious.map((r) => {
+                    const style = getRiskStyle(r.decision, r.risk_score);
+                    return (
+                      <tr key={r.id} className="hover:bg-slate-800/40 transition-colors">
+                        <td className="py-2.5 px-3 font-mono text-teal-400 font-bold">
+                          {r.transaction_id}
+                        </td>
+                        <td className="py-2.5 px-3 text-[11px] text-slate-400">
+                          {r.channel}
+                        </td>
+                        <td className="py-2.5 px-3 font-bold text-white">
+                          {formatINR(r.amount_inr ?? r.amount)}
+                        </td>
+                        <td className="py-2.5 px-3 font-bold">
+                          <span className={style.text}>{r.risk_score}</span>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${style.bg} ${style.border} ${style.text}`}>
+                            {r.decision}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          <button
+                            onClick={() => setSelectedTransactionId(r.transaction_id)}
+                            className="text-teal-400 hover:text-teal-300 text-[11px] font-bold"
+                          >
+                            Inspect
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Security Incident Alerts (5 Cols) */}
+        <div className="lg:col-span-5 bg-[#111827] border border-slate-800 rounded-xl p-5 shadow-card-dark">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-4">
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-amber-400" />
+                Security Alerts Roster
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Investigator triage and rule monitor feeds
+              </p>
+            </div>
+            <Link
+              to="/alerts"
+              className="text-xs text-teal-400 hover:text-teal-300 font-bold flex items-center gap-1"
+            >
+              <span>Manage</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+
+          <div className="space-y-2.5">
+            {recentAlerts.length === 0 ? (
+              <p className="text-xs text-slate-500 py-6 text-center italic">
+                No active security alerts in feed.
+              </p>
+            ) : (
+              recentAlerts.map((a) => (
+                <div
+                  key={a.id}
+                  onClick={() => setSelectedAlert(a)}
+                  className="bg-[#161F30] border border-slate-800 rounded-lg p-3 text-xs space-y-1 hover:border-slate-700 transition-colors cursor-pointer"
+                >
+                  <div className="flex justify-between items-center font-bold">
+                    <span className="font-mono text-teal-400 text-[11px]">{a.alert_code}</span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      a.status === 'Investigating'
+                        ? 'bg-teal-500/15 text-teal-400'
+                        : a.status === 'Resolved'
+                        ? 'bg-emerald-500/15 text-emerald-400'
+                        : 'bg-amber-500/15 text-amber-400'
+                    }`}>
+                      {a.status}
+                    </span>
+                  </div>
+                  <p className="text-slate-200 font-medium truncate">{a.title}</p>
+                  <div className="flex justify-between text-slate-400 text-[11px] pt-1">
+                    <span>{a.segment}</span>
+                    <span>{a.assignee}</span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Alert Detail Drawer if selected */}
       <AlertDetailDrawer
         alert={selectedAlert}
         onClose={() => setSelectedAlert(null)}

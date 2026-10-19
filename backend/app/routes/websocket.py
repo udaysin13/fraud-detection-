@@ -1,20 +1,24 @@
 """
-VaultGuard - Real-Time Simulated Transaction WebSocket Streamer
+VaultGuard - Real-Time Indian Payment WebSocket Streamer
+
+Streams simulated Indian digital payment transactions (UPI P2P, UPI P2M QR, Wallets)
+scored in real-time through the hybrid ML engine with database persistence.
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import random
+import time
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 from backend.app.database import SessionLocal
-from backend.app.models.orm import TransactionORM
+from backend.app.models.orm import TransactionORM, AlertORM, FraudAlertORM
 from backend.app.services.ml_service import predict_single_transaction
 
 router = APIRouter(tags=["WebSocket Stream"])
 
-# Active connections manager
+
 class ConnectionManager:
     def __init__(self):
         self.active_connections: list[WebSocket] = []
@@ -39,118 +43,146 @@ manager = ConnectionManager()
 
 
 def generate_simulated_txn():
-    """Generates a random simulated live transaction."""
-    is_fraud_scenario = random.random() < 0.25  # 25% simulated fraud in stream for live demo action
+    """Generates a realistic simulated Indian digital payment transaction."""
+    is_fraud_scenario = random.random() < 0.20  # 20% simulated fraud in stream
 
-    cards = ["CARD_99212", "CARD_33104", "CARD_88192", "CARD_TEST_001", "CARD_VEL_99"]
-    customers = ["CUST_1042", "CUST_9912", "CUST_4412", "CUST_SURGE_88"]
-    merchants = ["MERCH_102", "MERCH_882", "MERCH_SPIKE_77"]
-    categories = ["digital_goods", "retail", "gaming", "food_delivery", "subscription"]
-    segments = ["EU Payments", "APAC Cards", "AU Cards", "ME Cards", "AS Cards"]
+    vpa_handles = ["okhdfcbank", "paytm", "okicici", "okaxis", "barodampay", "ibl"]
+    first_names = ["aarav", "priya", "rohan", "sneha", "vikram", "ananya", "karthik", "pooja", "rahul", "neha"]
+    last_names = ["sharma", "patel", "verma", "nair", "gupta", "kulkarni", "reddy", "joshi", "mehta", "chatterjee"]
+    states = ["Maharashtra", "Karnataka", "Delhi", "Uttar Pradesh", "Gujarat", "Tamil Nadu", "Telangana", "West Bengal"]
+
+    sender_name = f"{random.choice(first_names)}.{random.choice(last_names)}{random.randint(10, 99)}"
+    sender_vpa = f"{sender_name}@{random.choice(vpa_handles)}"
+    sender_id = f"CUST_IND_{random.randint(1000, 9999)}"
+
+    channels = ["UPI_P2P", "UPI_P2M_QR", "WALLET", "IMPS"]
+    channel = random.choice(channels)
+
+    if channel == "UPI_P2M_QR":
+        txn_type = "MERCHANT_PAYMENT"
+        categories = ["kirana_grocery", "food_dining", "retail_fashion", "pharmacy_health", "electronics"]
+        category = random.choice(categories)
+        merch_id = f"MERCH_IND_{random.randint(100, 150)}"
+        beneficiary_id = merch_id
+        beneficiary_vpa = f"{category.split('_')[0]}.store@{random.choice(vpa_handles)}"
+    else:
+        txn_type = "P2P_TRANSFER"
+        category = "p2p_transfer"
+        merch_id = "NOT_APPLICABLE"
+        bene_name = f"{random.choice(first_names)}.{random.choice(last_names)}{random.randint(10, 99)}"
+        beneficiary_id = f"BEN_IND_{random.randint(1000, 5000)}"
+        beneficiary_vpa = f"{bene_name}@{random.choice(vpa_handles)}"
+
+    device_id = f"DEV_IND_{random.randint(10000, 20000)}"
+    sim_change_flag = 0
+    is_new_device = 0
 
     if is_fraud_scenario:
-        # Inject card testing or geo mismatch scenario
-        scenario = random.choice(["card_testing", "geo_mismatch", "velocity", "high_risk_bin"])
-        if scenario == "card_testing":
-            amount = round(random.uniform(0.50, 4.99), 2)
-            country, billing = "US", "US"
-            bin_range = "411111"
-        elif scenario == "geo_mismatch":
-            amount = round(random.uniform(12.00, 85.00), 2)
-            country, billing = "US", "RU"
-            bin_range = "411111"
-        elif scenario == "high_risk_bin":
-            amount = round(random.uniform(5.00, 40.00), 2)
-            country, billing = "DE", "DE"
-            bin_range = "499999"
-        else:
-            amount = round(random.uniform(9.90, 49.90), 2)
-            country, billing = "SG", "SG"
-            bin_range = "424242"
+        scenario = random.choice(["account_takeover", "micro_testing", "structuring", "mule_spike"])
+        if scenario == "account_takeover":
+            amount = round(random.uniform(4500.0, 9800.0), 2)
+            sim_change_flag = 1
+            is_new_device = 1
+        elif scenario == "micro_testing":
+            amount = round(random.uniform(1.0, 25.0), 2)
+            is_new_device = 1
+        elif scenario == "structuring":
+            amount = round(random.choice([999.0, 1990.0, 4950.0, 9900.0]), 2)
+        else:  # mule_spike
+            amount = round(random.uniform(500.0, 2500.0), 2)
+            channel = "UPI_P2M_QR"
+            txn_type = "MERCHANT_PAYMENT"
+            category = "digital_services"
+            merch_id = "MERCH_IND_112"
+            beneficiary_id = merch_id
     else:
-        amount = round(random.uniform(1.50, 45.00), 2)
-        country, billing = "US", "US"
-        bin_range = "411111"
+        amount = round(random.uniform(15.0, 850.0), 2)
 
-    txn_id = f"TXN_STREAM_{random.randint(100000, 999999)}"
+    txn_id = f"TXN_WS_{int(time.time() * 1000) % 1000000:06d}"
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     return {
         "transaction_id": txn_id,
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "card_id": random.choice(cards),
-        "customer_id": random.choice(customers),
-        "merchant_id": random.choice(merchants),
-        "merchant_category": random.choice(categories),
+        "timestamp": now_str,
+        "amount_inr": amount,
+        "channel": channel,
+        "transaction_type": txn_type,
+        "sender_id": sender_id,
+        "beneficiary_id": beneficiary_id,
+        "sender_vpa": sender_vpa,
+        "beneficiary_vpa": beneficiary_vpa,
+        "merchant_id": merch_id,
+        "merchant_category": category,
+        "device_id": device_id,
+        "is_new_device": is_new_device,
+        "sim_change_flag": sim_change_flag,
+        "ip_location_state": random.choice(states),
+        # Legacy compatibility aliases
         "amount": amount,
-        "currency": "USD",
-        "country": country,
-        "billing_country": billing,
-        "device_id": f"DEV_{random.randint(10000, 99999)}",
-        "ip_address": f"{random.randint(1,200)}.{random.randint(1,254)}.{random.randint(1,254)}.{random.randint(1,254)}",
-        "is_new_device": 1 if is_fraud_scenario else 0,
-        "bin_range": bin_range,
-        "channel": random.choice(["mobile_app", "web", "api"]),
-        "segment": random.choice(segments),
+        "customer_id": sender_id,
+        "card_id": sender_vpa,
+        "currency": "INR",
+        "country": "IN",
+        "billing_country": "IN",
+        "ip_address": f"{random.randint(27, 157)}.{random.randint(10, 200)}.{random.randint(10, 200)}.{random.randint(1, 254)}",
+        "bin_range": "UPI000",
+        "segment": "UPI Payments",
     }
 
 
 @router.websocket("/ws/transactions")
 async def websocket_transactions_stream(websocket: WebSocket):
     """
-    WebSocket endpoint that streams a newly scored simulated transaction every 3 seconds.
+    WebSocket endpoint streaming newly scored transactions every 3 seconds.
     """
     await manager.connect(websocket)
-    db: Session = SessionLocal()
 
     try:
         while True:
             raw_txn = generate_simulated_txn()
-            res = predict_single_transaction(raw_txn)
+            
+            # Use a fresh database session for each tick to prevent stale connection drops
+            db: Session = SessionLocal()
+            try:
+                res = predict_single_transaction(raw_txn, db=db)
+            except Exception as inner_e:
+                print(f"[WebSocket Prediction Error]: {inner_e}")
+                res = {
+                    "risk_score": 15.0,
+                    "decision": "Approve",
+                    "risk_category": "LOW_RISK",
+                    "reasons": ["Fallback simulation active"],
+                    "xgb_probability": 0.05,
+                    "anomaly_score": 0.1
+                }
+            finally:
+                db.close()
+
+            decision = res.get("decision", "Approve")
+            status_str = "Approved"
+            if decision == "Block":
+                status_str = "Declined"
+            elif decision == "Manual Review":
+                status_str = "Under Review"
 
             stream_item = {
                 **raw_txn,
-                "risk_score": res["risk_score"],
-                "decision": res["decision"],
-                "reasons": res["reasons"],
-                "status": "Declined" if res["decision"] == "Block" else ("Under Review" if res["decision"] == "Manual Review" else "Approved"),
+                "risk_score": res.get("risk_score", 0.0),
+                "decision": decision,
+                "risk_category": res.get("risk_category", "LOW_RISK"),
+                "reasons": res.get("reasons", []),
+                "status": status_str,
+                "xgb_probability": res.get("xgb_probability", 0.0),
+                "anomaly_score": res.get("anomaly_score", 0.0),
+                "is_simulated": True,
+                "source": "websocket_simulation",
             }
 
-            # Save to database
-            try:
-                db_txn = TransactionORM(
-                    transaction_id=stream_item["transaction_id"],
-                    timestamp=stream_item["timestamp"],
-                    card_id=stream_item["card_id"],
-                    customer_id=stream_item["customer_id"],
-                    merchant_id=stream_item["merchant_id"],
-                    merchant_category=stream_item["merchant_category"],
-                    amount=stream_item["amount"],
-                    currency=stream_item["currency"],
-                    country=stream_item["country"],
-                    billing_country=stream_item["billing_country"],
-                    device_id=stream_item["device_id"],
-                    ip_address=stream_item["ip_address"],
-                    is_new_device=stream_item["is_new_device"],
-                    bin_range=stream_item["bin_range"],
-                    channel=stream_item["channel"],
-                    segment=stream_item["segment"],
-                    is_fraud=1 if res["decision"] == "Block" else 0,
-                    risk_score=res["risk_score"],
-                    decision=res["decision"],
-                    reasons=json.dumps(res["reasons"]),
-                    status=stream_item["status"],
-                )
-                db.add(db_txn)
-                db.commit()
-            except Exception as db_err:
-                db.rollback()
-
             await websocket.send_json(stream_item)
-            await asyncio.sleep(3.0)  # Stream every 3 seconds
+            await asyncio.sleep(3.0)
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception as e:
+        print(f"[WebSocket Disconnect Error]: {e}")
         manager.disconnect(websocket)
-    finally:
-        db.close()

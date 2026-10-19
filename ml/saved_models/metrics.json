@@ -1,59 +1,226 @@
 {
-  "precision": 0.6796,
-  "recall": 0.9545,
-  "f1_score": 0.794,
-  "roc_auc": 0.9982,
+  "precision": 0.9889,
+  "recall": 0.9834,
+  "f1_score": 0.9861,
+  "roc_auc": 1.0,
   "confusion_matrix": [
     [
-      10681,
-      99
+      8067,
+      2
     ],
     [
-      10,
-      210
+      3,
+      178
     ]
   ],
-  "test_sample_count": 11000,
-  "fraud_count_test": 220,
+  "test_sample_count": 8250,
+  "fraud_count_test": 181,
   "decision_distribution": {
-    "Allow": 10689,
-    "Block": 216,
-    "Manual Review": 95
+    "Allow": 8067,
+    "Block": 173,
+    "Manual Review": 10
+  },
+  "pr_auc": 0.9986,
+  "selected_threshold": 0.57,
+  "selected_model": "xgboost",
+  "iso_normalization_bounds": {
+    "min_val": -0.18974798283714195,
+    "max_val": 0.143086322410643
+  },
+  "chronological_splits": {
+    "train": {
+      "rows": 38500,
+      "fraud_count": 796,
+      "fraud_rate_pct": 2.07,
+      "start_time": "2026-09-12 12:00:41",
+      "end_time": "2026-10-03 14:35:08"
+    },
+    "validation": {
+      "rows": 8250,
+      "fraud_count": 233,
+      "fraud_rate_pct": 2.82,
+      "start_time": "2026-10-03 14:36:14",
+      "end_time": "2026-10-08 00:45:56"
+    },
+    "test": {
+      "rows": 8250,
+      "fraud_count": 181,
+      "fraud_rate_pct": 2.19,
+      "start_time": "2026-10-08 00:46:26",
+      "end_time": "2026-10-12 11:59:11"
+    }
+  },
+  "model_benchmarks": {
+    "logistic_regression": {
+      "model_type": "Logistic Regression (StandardScaler + Balanced Weights)",
+      "val_threshold": 0.94,
+      "val_f1": 0.9371,
+      "val_pr_auc": 0.9744,
+      "val_roc_auc": 0.9983,
+      "test_metrics": {
+        "split": "Test",
+        "sample_count": 8250,
+        "fraud_count": 181,
+        "fraud_prevalence_pct": 2.19,
+        "threshold": 0.94,
+        "precision": 0.9368,
+        "recall": 0.9006,
+        "f1_score": 0.9183,
+        "pr_auc": 0.9648,
+        "roc_auc": 0.9979,
+        "confusion_matrix": [
+          [
+            8058,
+            11
+          ],
+          [
+            18,
+            163
+          ]
+        ],
+        "true_negatives": 8058,
+        "false_positives": 11,
+        "false_negatives": 18,
+        "true_positives": 163
+      }
+    },
+    "random_forest": {
+      "model_type": "Random Forest (Balanced Weights, 100 Trees, Depth 10)",
+      "val_threshold": 0.57,
+      "val_f1": 0.9828,
+      "val_pr_auc": 0.9974,
+      "val_roc_auc": 0.9999,
+      "test_metrics": {
+        "split": "Test",
+        "sample_count": 8250,
+        "fraud_count": 181,
+        "fraud_prevalence_pct": 2.19,
+        "threshold": 0.57,
+        "precision": 0.9887,
+        "recall": 0.9669,
+        "f1_score": 0.9777,
+        "pr_auc": 0.9969,
+        "roc_auc": 0.9999,
+        "confusion_matrix": [
+          [
+            8067,
+            2
+          ],
+          [
+            6,
+            175
+          ]
+        ],
+        "true_negatives": 8067,
+        "false_positives": 2,
+        "false_negatives": 6,
+        "true_positives": 175
+      }
+    },
+    "xgboost": {
+      "model_type": "XGBoost Classifier (Class-Weighted, 150 Trees, Depth 5)",
+      "val_threshold": 0.57,
+      "val_f1": 0.9848,
+      "val_pr_auc": 0.9982,
+      "val_roc_auc": 0.9999,
+      "test_metrics": {
+        "split": "Test",
+        "sample_count": 8250,
+        "fraud_count": 181,
+        "fraud_prevalence_pct": 2.19,
+        "threshold": 0.57,
+        "precision": 0.9889,
+        "recall": 0.9834,
+        "f1_score": 0.9861,
+        "pr_auc": 0.9986,
+        "roc_auc": 1.0,
+        "confusion_matrix": [
+          [
+            8067,
+            2
+          ],
+          [
+            3,
+            178
+          ]
+        ],
+        "true_negatives": 8067,
+        "false_positives": 2,
+        "false_negatives": 3,
+        "true_positives": 178
+      }
+    },
+    "isolation_forest": {
+      "model_type": "Isolation Forest (Unsupervised Anomaly Detector)",
+      "val_threshold": 0.61,
+      "val_f1": 0.6995,
+      "val_pr_auc": 0.6919,
+      "val_roc_auc": 0.9331,
+      "test_metrics": {
+        "split": "Test",
+        "sample_count": 8250,
+        "fraud_count": 181,
+        "fraud_prevalence_pct": 2.19,
+        "threshold": 0.61,
+        "precision": 0.7167,
+        "recall": 0.4751,
+        "f1_score": 0.5714,
+        "pr_auc": 0.5642,
+        "roc_auc": 0.8959,
+        "confusion_matrix": [
+          [
+            8035,
+            34
+          ],
+          [
+            95,
+            86
+          ]
+        ],
+        "true_negatives": 8035,
+        "false_positives": 34,
+        "false_negatives": 95,
+        "true_positives": 86
+      }
+    }
   },
   "feature_columns": [
     "amount",
-    "txn_count_1min",
-    "txn_count_10min",
-    "txn_count_1hour",
-    "card_avg_amount",
-    "card_std_amount",
-    "amount_z_score",
     "is_small_amount",
     "is_just_below_threshold",
-    "time_since_last_txn",
-    "device_count_24h",
-    "geo_mismatch",
-    "high_risk_bin",
-    "merchant_spike_ratio",
+    "amount_to_avg_ratio",
     "hour_of_day",
     "day_of_week",
     "is_night",
-    "merchant_category_crypto_exchange",
-    "merchant_category_digital_goods",
-    "merchant_category_food_delivery",
-    "merchant_category_gaming",
-    "merchant_category_retail",
-    "merchant_category_rideshare",
-    "merchant_category_subscription",
-    "merchant_category_travel",
-    "channel_api",
-    "channel_mobile_app",
-    "channel_pos",
-    "channel_web",
-    "segment_APAC Cards",
-    "segment_AS Cards",
-    "segment_AU Cards",
-    "segment_EU Payments",
-    "segment_ME Cards"
+    "is_new_device",
+    "sim_change_flag",
+    "high_risk_device_action",
+    "time_since_last_txn",
+    "txn_count_1min",
+    "txn_count_10min",
+    "txn_count_1hour",
+    "txn_count_24h",
+    "is_new_beneficiary",
+    "merchant_spike_ratio",
+    "geo_mismatch",
+    "high_risk_bin",
+    "channel_UPI_P2M_QR",
+    "channel_UPI_P2P",
+    "channel_WALLET",
+    "channel_IMPS",
+    "channel_RUPAY_CARD",
+    "txn_type_QR_PAYMENT",
+    "txn_type_P2P_TRANSFER",
+    "txn_type_MERCHANT_PAYMENT",
+    "txn_type_COLLECT_REQUEST",
+    "merchant_cat_food_dining",
+    "merchant_cat_kirana_grocery",
+    "merchant_cat_digital_services",
+    "merchant_cat_transport_travel",
+    "merchant_cat_retail_fashion",
+    "merchant_cat_pharmacy_health",
+    "merchant_cat_electronics",
+    "merchant_cat_gaming_entertainment",
+    "merchant_cat_p2p_transfer"
   ]
 }
