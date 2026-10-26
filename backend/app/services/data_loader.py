@@ -7,6 +7,7 @@ initializes model metadata, and creates security alerts.
 """
 
 from datetime import datetime, timezone
+import os
 import json
 from pathlib import Path
 import numpy as np
@@ -14,7 +15,7 @@ import pandas as pd
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from backend.app.database import engine, Base, SessionLocal
+from backend.app.database import engine, Base, SessionLocal, verify_database_connection
 from backend.app.models.orm import (
     TransactionORM,
     FraudAlertORM,
@@ -25,36 +26,37 @@ from backend.app.models.orm import (
     CaseORM,
 )
 from ml.features import engineer_features
-from ml.predict import load_models, derive_reasons, get_decision, get_risk_category
+from ml.predict import (
+    load_models,
+    derive_reasons,
+    get_decision,
+    get_risk_category,
+    normalize_iso_score,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 
-def seed_database_on_first_run(force_reseed: bool = False):
+def seed_database_on_first_run():
     """
-    Initializes tables and populates data/transactions.csv into SQLite.
-    If force_reseed is True, clears existing tables and performs a clean import.
+    Seeds an already-migrated empty database from data/transactions.csv.
+
+    This function never deletes, drops, or recreates existing tables. Schema changes
+    must be performed with an explicit Alembic migration before application startup.
     """
-    if force_reseed:
-        print("[DataLoader] Force reseed requested. Dropping and re-creating all tables...")
-        Base.metadata.drop_all(bind=engine)
-        Base.metadata.create_all(bind=engine)
-    else:
-        Base.metadata.create_all(bind=engine)
+    verify_database_connection()
 
     db: Session = SessionLocal()
     try:
         try:
             txn_count = db.query(TransactionORM).count()
         except Exception as schema_err:
-            print(f"[DataLoader] Detected schema mismatch ({schema_err}). Re-creating all tables...")
-            db.close()
-            Base.metadata.drop_all(bind=engine)
-            Base.metadata.create_all(bind=engine)
-            db = SessionLocal()
-            txn_count = 0
+            raise RuntimeError(
+                "Database schema validation failed. Existing data was left unchanged. "
+                "Apply the required Alembic migration, then restart the application."
+            ) from schema_err
 
-        if txn_count > 0 and not force_reseed:
+        if txn_count > 0:
             print(f"[DataLoader] Database contains {txn_count:,} transactions. Skipping initial seed.")
             return
 
@@ -81,10 +83,10 @@ def seed_database_on_first_run(force_reseed: bool = False):
         X_matrix = X_df[feature_names]
         xgb_probs = xgb_model.predict_proba(X_matrix)[:, 1]
         iso_raw = iso_model.decision_function(X_matrix)
-        inv_iso = -iso_raw
-        iso_min, iso_max = inv_iso.min(), inv_iso.max()
-        iso_scores = (inv_iso - iso_min) / (iso_max - iso_min + 1e-5)
-        iso_scores = np.clip(iso_scores, 0.0, 1.0)
+        # Use the train-set bounds stored with the model, matching live inference.
+        iso_scores = np.array(
+            [normalize_iso_score(float(raw), metrics) for raw in iso_raw]
+        )
 
         # Hybrid risk score formula: (0.75 * xgb + 0.25 * iso) * 100
         risk_scores = np.round(np.clip((0.75 * xgb_probs + 0.25 * iso_scores) * 100.0, 0.0, 100.0), 1)
@@ -180,6 +182,8 @@ def seed_database_on_first_run(force_reseed: bool = False):
                 segment=seg,
                 is_fraud=int(row.get("is_fraud", 0)),
                 fraud_pattern=str(row.get("fraud_pattern", "")),
+                label_source="synthetic_ground_truth",
+                label_confirmed_at=datetime.now(timezone.utc),
                 # Scored outputs
                 risk_score=rs,
                 decision=dec,
@@ -218,7 +222,9 @@ def seed_database_on_first_run(force_reseed: bool = False):
                 }
             customer_map[sender]["total_transactions"] += 1
             customer_map[sender]["total_spend"] += amt
-            if int(row.get("is_fraud", 0)) == 1 or dec in ["Block", "Manual Review"]:
+            # Customer fraud incidents remain a count of verified dataset labels;
+            # suspected model outcomes belong to the separate risk/decision fields.
+            if int(row.get("is_fraud", 0)) == 1:
                 customer_map[sender]["fraud_incidents"] += 1
             if rs > customer_map[sender]["max_risk"]:
                 customer_map[sender]["max_risk"] = rs
@@ -383,6 +389,21 @@ def seed_database_on_first_run(force_reseed: bool = False):
         db.close()
 
 
+def reset_development_database(confirmation: str) -> None:
+    """Development-only destructive reset; never invoked by application startup."""
+    if os.getenv("VAULTGUARD_ENV", "").lower() != "development":
+        raise RuntimeError("Database reset is permitted only when VAULTGUARD_ENV=development.")
+    if confirmation != "DELETE ALL VAULTGUARD DATA":
+        raise RuntimeError("Reset confirmation did not match; no database changes were made.")
+
+    verify_database_connection()
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    seed_database_on_first_run()
+
+
 if __name__ == "__main__":
-    print("Running explicit database re-seed...")
-    seed_database_on_first_run(force_reseed=True)
+    raise SystemExit(
+        "Refusing to reset the database from this module. Use reset_development_database "
+        "only from an explicitly confirmed development workflow."
+    )

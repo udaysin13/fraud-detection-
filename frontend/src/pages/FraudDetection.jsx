@@ -486,7 +486,7 @@ export const FraudDetection = () => {
                       {result.decision === 'Block' && <XCircle className="w-4 h-4" />}
                       {result.decision === 'Manual Review' && <AlertTriangle className="w-4 h-4" />}
                       {result.decision === 'Allow' && <CheckCircle2 className="w-4 h-4" />}
-                      <span>Recommended action: {result.decision}</span>
+                      <span>Recommended action: {result.recommended_action || result.decision}</span>
                     </span>
                   </div>
                 </div>
@@ -533,8 +533,19 @@ export const FraudDetection = () => {
                   </ul>
                 </div>
 
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3.5 space-y-2">
+                  <h4 className="text-xs font-bold text-blue-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <ShieldAlert className="w-3.5 h-3.5" /> Rule signals (separate from ML score)
+                  </h4>
+                  {result.rule_signals?.length ? <ul className="space-y-1.5 text-xs">{result.rule_signals.map((signal) => (
+                    <li key={signal.rule_id} className="bg-white border border-blue-100 rounded p-2 text-slate-700">
+                      <span className="font-bold mr-1">{signal.severity}:</span>{signal.message}
+                    </li>
+                  ))}</ul> : <p className="text-xs text-slate-600">No configured rules fired for the available transaction context.</p>}
+                </div>
+
                 {/* System Meta */}
-                <p className="text-[11px] text-slate-500">Reasons may include SHAP-derived signals, rule checks, or baseline labels returned by the scoring service.</p>
+                <p className="text-[11px] text-slate-500">Model explanations and transparent rule signals are shown separately. Neither is proof of fraud.</p>
 
                 <div className="text-[10px] text-slate-500 border-t border-slate-200 pt-2 flex justify-between">
                   <span>Engine: {result.model_version || 'v1.0.0-xgb-iso'}</span>

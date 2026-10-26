@@ -120,12 +120,14 @@ def get_transactions(
             bin_range=r.bin_range or "",
             channel=r.channel or "UPI_P2P",
             segment=r.segment or "UPI P2P",
-            is_fraud=r.is_fraud or 0,
+            is_fraud=r.is_fraud,
             risk_score=r.risk_score or 0.0,
             decision=r.decision or "Allow",
             risk_category=r.risk_category or "LOW_RISK",
             reasons=reasons_list,
             status=r.status or "Approved",
+            label_source=r.label_source,
+            label_confirmed_at=r.label_confirmed_at,
         )
         out.append(item)
 
@@ -171,7 +173,7 @@ def get_transaction_by_id(transaction_id: str, db: Session = Depends(get_db)):
         bin_range=r.bin_range or "",
         channel=r.channel or "UPI_P2P",
         segment=r.segment or "",
-        is_fraud=r.is_fraud or 0,
+        is_fraud=r.is_fraud,
         risk_score=r.risk_score or 0.0,
         decision=r.decision or "Allow",
         risk_category=r.risk_category or "LOW_RISK",
@@ -188,6 +190,8 @@ def get_transaction_by_id(transaction_id: str, db: Session = Depends(get_db)):
         model_version=r.model_version,
         scored_at=r.scored_at,
         source=r.source,
+        label_source=r.label_source,
+        label_confirmed_at=r.label_confirmed_at,
     )
 
 
@@ -243,9 +247,11 @@ def score_single_transaction_api(
     risk_cat = res.get("risk_category", "LOW_RISK")
     reasons = res.get("reasons", [])
 
-    status_str = "Approved"
+    # This academic simulator recommends analyst action; it never declines or
+    # blocks a real payment.
+    status_str = "No Review Required"
     if decision == "Block":
-        status_str = "Declined"
+        status_str = "Review Required"
     elif decision == "Manual Review":
         status_str = "Under Review"
 
@@ -277,7 +283,10 @@ def score_single_transaction_api(
         ip_address=txn_dict.get("ip_address"),
         bin_range=txn_dict.get("bin_range"),
         segment=txn_dict.get("segment") or "UPI P2P",
-        is_fraud=1 if decision == "Block" else 0,
+        # A model decision is suspicion, not a verified fraud label.
+        is_fraud=None,
+        label_source=None,
+        label_confirmed_at=None,
         risk_score=risk_score,
         decision=decision,
         risk_category=risk_cat,
@@ -314,6 +323,7 @@ def score_single_transaction_api(
             time_ago="Just now",
             status="Investigating" if decision == "Block" else "Monitoring",
             assignee="Risk Engine",
+            severity="HIGH" if risk_cat == "HIGH_RISK" else "MEDIUM",
         )
         db.add(legacy_alert)
 

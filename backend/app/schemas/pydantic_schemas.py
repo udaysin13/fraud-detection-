@@ -9,7 +9,7 @@ All schemas preserve backward compatibility while adding Indian payment support.
 
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Literal
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 # ─── Transaction Schemas ───────────────────────────────────────────────
@@ -32,7 +32,7 @@ class TransactionBase(BaseModel):
     bin_range: str = ""
     channel: str = "UPI_P2P"
     segment: str = ""
-    is_fraud: Optional[int] = 0
+    is_fraud: Optional[int] = None
     # Indian payment fields (optional, not required by frontend)
     amount_inr: Optional[float] = None
     transaction_type: Optional[str] = None
@@ -62,12 +62,14 @@ class TransactionResponse(BaseModel):
     bin_range: Optional[str] = ""
     channel: str = "UPI_P2P"
     segment: Optional[str] = ""
-    is_fraud: Optional[int] = 0
+    is_fraud: Optional[int] = None
     risk_score: float = 0.0
     decision: str = "Allow"
     risk_category: Optional[str] = "LOW_RISK"
     reasons: List[str] = []
     status: str = "Approved"
+    label_source: Optional[str] = None
+    label_confirmed_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -122,6 +124,14 @@ class TransactionPredictRequest(BaseModel):
     sim_change_flag: Optional[int] = 0
     ip_location_state: Optional[str] = Field(None, max_length=64)
 
+    @model_validator(mode="after")
+    def require_amount_and_sender(self):
+        if self.amount is None and self.amount_inr is None:
+            raise ValueError("Either amount or amount_inr is required for scoring.")
+        if not (self.sender_id or self.customer_id or self.card_id):
+            raise ValueError("One of sender_id, customer_id, or card_id is required for scoring.")
+        return self
+
     @field_validator("amount", "amount_inr", mode="before")
     @classmethod
     def validate_amount_bounds(cls, v):
@@ -169,6 +179,8 @@ class PredictionResponse(BaseModel):
     model_version: Optional[str] = None
     scoring_timestamp: Optional[str] = None
     fraud_probability: Optional[float] = None
+    rule_signals: List[Dict[str, str]] = []
+    recommended_action: Optional[str] = None
 
 
 # ─── Alert Schemas ────────────────────────────────────────────────────
@@ -180,6 +192,7 @@ class AlertBase(BaseModel):
     time_ago: str
     status: str = "Monitoring"
     assignee: str
+    severity: Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"] = "MEDIUM"
 
 
 class AlertCreate(AlertBase):
@@ -187,12 +200,29 @@ class AlertCreate(AlertBase):
 
 
 class AlertUpdate(BaseModel):
-    status: Optional[str] = None
+    status: Optional[Literal["Monitoring", "Investigating", "Resolved", "Dismissed"]] = None
     assignee: Optional[str] = None
+    severity: Optional[Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"]] = None
+    acknowledge: Optional[bool] = None
 
 
 class AlertResponse(AlertBase):
     id: int
+    acknowledged_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AlertHistoryResponse(BaseModel):
+    id: int
+    alert_id: int
+    event_type: str
+    previous_status: Optional[str] = None
+    new_status: Optional[str] = None
+    actor: str
+    created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -247,6 +277,12 @@ class CaseResponse(BaseModel):
     risk_score: float
     status: str
     assigned_analyst: str
+    transaction_id: Optional[str] = None
+    severity: Optional[str] = None
+    outcome: Optional[str] = None
+    closure_reason: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -263,6 +299,70 @@ CaseStatus = Literal[
 
 class CaseStatusUpdate(BaseModel):
     status: CaseStatus
+    closure_reason: Optional[str] = Field(None, max_length=1000)
+
+
+class CaseCreate(BaseModel):
+    transaction_id: str = Field(..., max_length=128)
+    assigned_analyst: str = Field("Unassigned", max_length=128)
+    severity: Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"] = "MEDIUM"
+    title: Optional[str] = Field(None, max_length=256)
+
+
+class CaseNoteCreate(BaseModel):
+    note: str = Field(..., min_length=1, max_length=4000)
+
+
+class CaseNoteResponse(BaseModel):
+    id: int
+    case_id: str
+    note: str
+    author: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CaseHistoryResponse(BaseModel):
+    id: int
+    case_id: str
+    event_type: str
+    previous_status: Optional[str] = None
+    new_status: Optional[str] = None
+    actor: str
+    detail: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RuleConfigUpdate(BaseModel):
+    value: float = Field(..., ge=0, le=1_000_000)
+    enabled: bool = True
+
+
+class RuleConfigResponse(BaseModel):
+    rule_key: str
+    value: float
+    enabled: bool
+    version: int
+    updated_by: str
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RuleHistoryResponse(BaseModel):
+    rule_key: str
+    previous_value: Optional[float] = None
+    new_value: float
+    previous_enabled: Optional[int] = None
+    new_enabled: int
+    version: int
+    changed_by: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CaseQueueItem(BaseModel):

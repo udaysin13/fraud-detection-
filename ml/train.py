@@ -56,6 +56,28 @@ np.random.seed(SEED)
 MODELS_DIR = PROJECT_ROOT / "ml" / "saved_models"
 
 
+def get_verified_training_labels(raw_df: pd.DataFrame) -> np.ndarray:
+    """Return explicit binary ground-truth labels suitable for supervision only."""
+    if "is_fraud" not in raw_df.columns:
+        raise ValueError("Supervised training requires an is_fraud ground-truth label column.")
+
+    labels = pd.to_numeric(raw_df["is_fraud"], errors="coerce")
+    if labels.isna().any() or not labels.isin([0, 1]).all():
+        raise ValueError("is_fraud must contain only verified binary labels (0 or 1).")
+
+    if "label_source" in raw_df.columns:
+        approved_sources = {
+            "synthetic_ground_truth",
+            "analyst_confirmed",
+            "chargeback_confirmed",
+        }
+        if not raw_df["label_source"].fillna("").isin(approved_sources).all():
+            raise ValueError(
+                "Training labels need an approved label_source; model predictions are not labels."
+            )
+    return labels.astype(int).to_numpy()
+
+
 def split_chronological(
     df: pd.DataFrame, train_ratio: float = 0.70, val_ratio: float = 0.15
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -206,7 +228,7 @@ def train_models():
     # 2. Point-in-Time Feature Engineering
     print("Engineering domain features (velocity, SIM/device flags, merchant spikes)...")
     X, feature_names = engineer_features(raw_df)
-    y = raw_df["is_fraud"].values
+    y = get_verified_training_labels(raw_df)
 
     total_samples = len(raw_df)
     print(f"Engineered {X.shape[1]} features across {total_samples:,} transactions.")

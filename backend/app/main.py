@@ -15,7 +15,7 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from backend.app.database import get_db
+from backend.app.database import get_db, verify_database_connection
 from backend.app.models.orm import TransactionORM
 from backend.app.schemas.pydantic_schemas import HealthResponse
 from backend.app.routes.analytics import router as analytics_router
@@ -24,6 +24,8 @@ from backend.app.routes.transactions import router as transactions_router
 from backend.app.routes.entities import router as entities_router
 from backend.app.routes.models_api import router as models_router
 from backend.app.routes.websocket import router as websocket_router
+from backend.app.routes.bulk_analysis import router as bulk_analysis_router
+from backend.app.routes.rules import router as rules_router
 from backend.app.services.data_loader import seed_database_on_first_run
 from backend.app.services.ml_service import get_model_health
 
@@ -35,9 +37,14 @@ async def lifespan(app: FastAPI):
     """
     print("[Lifespan] VaultGuard API starting up... Checking database state...")
     try:
+        verify_database_connection()
         seed_database_on_first_run()
     except Exception as e:
-        print(f"[Lifespan ERROR] Database initialization failed: {e}")
+        raise RuntimeError(
+            "VaultGuard could not start because database initialization failed. "
+            "No data was deleted. Resolve the database connection or apply the "
+            "required migration before restarting."
+        ) from e
     yield
     print("[Lifespan] VaultGuard API shutting down...")
 
@@ -79,6 +86,8 @@ app.include_router(transactions_router)
 app.include_router(entities_router)
 app.include_router(models_router)
 app.include_router(websocket_router)
+app.include_router(bulk_analysis_router)
+app.include_router(rules_router)
 
 
 @app.get("/", tags=["Health"])

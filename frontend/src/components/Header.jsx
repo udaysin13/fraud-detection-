@@ -237,7 +237,7 @@ export const Header = ({ onToggleMobileSidebar }) => {
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
                           n.decision === 'Block' ? 'bg-rose-500/20 text-rose-300' : 'bg-amber-500/20 text-amber-300'
                         }`}>
-                          {n.decision} ({n.risk_score})
+                          {n.decision === 'Block' ? 'Review required' : n.decision} ({n.risk_score})
                         </span>
                       </div>
                       <div className="flex justify-between text-slate-300 text-[11px]">

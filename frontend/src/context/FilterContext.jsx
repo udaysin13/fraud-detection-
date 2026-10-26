@@ -120,7 +120,7 @@ export const FilterProvider = ({ children }) => {
             const notif = {
               id: `${txnId}_${Date.now()}`,
               transaction_id: txnId,
-              title: streamItem.decision === 'Block' ? 'Critical Payment Block' : 'Suspicious Anomaly Flagged',
+              title: streamItem.decision === 'Block' ? 'High-risk review recommended' : 'Suspicious anomaly flagged',
               channel: streamItem.channel || 'UPI_P2P',
               amount_inr: streamItem.amount_inr ?? streamItem.amount,
               risk_score: streamItem.risk_score,

@@ -21,6 +21,8 @@ export const RulesModels = () => {
   const [error, setError] = useState(null);
   const [retraining, setRetraining] = useState(false);
   const [retrainSuccess, setRetrainSuccess] = useState(false);
+  const [rules, setRules] = useState([]);
+  const [rulesError, setRulesError] = useState('');
 
   const modeledSignals = [
     {
@@ -66,6 +68,12 @@ export const RulesModels = () => {
 
   useEffect(() => {
     fetchMetrics();
+    apiClient.getRules()
+      .then(setRules)
+      .catch((err) => {
+        console.error('Failed to fetch risk rules:', err);
+        setRulesError(err.message || 'Unable to retrieve risk-rule configuration.');
+      });
   }, [fetchMetrics]);
 
   const handleRetrain = async () => {
@@ -109,6 +117,12 @@ export const RulesModels = () => {
           <RefreshCw className={`w-3.5 h-3.5 ${retraining ? 'animate-spin' : ''}`} />
           <span>{retraining ? 'Re-training Pipeline...' : 'Re-train ML Pipeline'}</span>
         </button>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-card-soft">
+        <div className="pb-3 border-b border-slate-200 mb-3"><h3 className="text-sm font-bold text-slate-800">Transparent rule configuration</h3><p className="text-xs text-slate-500 mt-0.5">Effective backend thresholds. Editing requires a server-side administrator token and is not exposed to browser clients.</p></div>
+        {rulesError && <p role="alert" className="mb-3 rounded border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">{rulesError}</p>}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">{rules.map((rule) => <div key={rule.rule_key} className="rounded-lg border border-slate-200 bg-slate-50 p-3"><p className="text-[10px] font-bold uppercase text-slate-400 break-all">{rule.rule_key}</p><p className="mt-1 text-lg font-bold text-slate-800">{rule.enabled ? rule.value : 'Disabled'}</p><p className="text-[10px] text-slate-500">v{rule.version} · {rule.updated_by}</p></div>)}</div>
       </div>
 
       {retrainSuccess && (

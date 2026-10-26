@@ -42,11 +42,12 @@ Legacy rule engines relying on static thresholds either suffer from high false-p
 - [x] **Hybrid ML Risk Scoring**: Supervised XGBoost (75% weight) + Unsupervised Isolation Forest (25% weight) yielding a calibrated 0–100 score.
 - [x] **Dynamic TreeSHAP Explanations**: Real-time calculation of top feature contributors pushing scores toward suspicion.
 - [x] **Leakage-Free Time-Series Features**: 39 point-in-time features using `closed="left"` rolling windows and expanding historical statistics.
-- [x] **FastAPI REST API**: 16 endpoints for predictions, analytics, alerts, transactions, entities, metrics, and CSV exports.
+- [x] **FastAPI REST API**: Prediction, analytics, alert lifecycle, investigation case, bulk CSV analysis, rule configuration, entity, model, and export endpoints.
 - [x] **Simulated WebSocket Stream**: Live payment stream (`/ws/transactions`) broadcasting newly scored events every 3 seconds without polluting database storage.
-- [x] **Analyst Demonstration UI**: Light-themed Overview, Transactions, Fraud Analysis, Alerts, Investigations, and Model Insights, with secondary customer, merchant, report, compliance, and admin routes.
+- [x] **Analyst Demonstration UI**: Light-themed Overview, Transactions, Fraud Analysis, Bulk Fraud Detection, Alerts, Investigations, and Model Insights, with secondary customer, merchant, report, compliance, and admin routes.
+- [x] **Case Evidence & Rule Governance**: Append-only investigation notes and history, duplicate-safe transaction-linked cases, versioned rule overrides, and auditable analyst attribution.
 - [x] **Indian Payment Localization**: Native support for VPA routing, SIM swap flags, device ATO signals, and Indian numbering (`₹1,24,500.00`).
-- [x] **Security Hardening**: Formula injection sanitization on CSV exports (CWE-1236), bounded payload validators, CORS origin restrictions, and retrain concurrency guards.
+- [x] **Security Hardening**: Formula injection sanitization on CSV exports (CWE-1236), bounded payload and upload validators, CORS origin restrictions, and retrain concurrency guards.
 - [x] **Automated Test Suite**: Pytest unit, integration, dataset, ML pipeline, and security regression checks; see the verification record below for the current run.
 
 ### Planned / Roadmap Features
@@ -126,8 +127,14 @@ fraud/
 │   │   │   ├── analytics.py         # GET /api/analytics/overview, /api/trend, /api/export
 │   │   │   ├── entities.py          # GET /api/customers, /api/merchants, /api/cases
 │   │   │   ├── models_api.py        # GET /api/models/metrics, POST /api/models/retrain
+│   │   │   ├── bulk_analysis.py     # CSV upload, analysis, and export
+│   │   │   ├── rules.py             # Versioned risk-rule configuration
 │   │   │   ├── transactions.py      # GET /api/transactions, POST /api/predict
 │   │   │   └── websocket.py         # WS /ws/transactions simulated stream
+│   │   ├── services/
+│   │   │   ├── bulk_analysis.py     # Bounded, non-persistent CSV inference
+│   │   │   └── risk_rules.py        # Point-in-time transparent rule signals
+│   ├── alembic/                     # Explicit, non-destructive schema migrations
 │   │   ├── schemas/
 │   │   │   └── pydantic_schemas.py  # Request & response validation schemas
 │   │   └── services/
@@ -236,7 +243,7 @@ $$\text{Risk Score} = 0.75 \times (\text{XGBoost Probability}) + 0.25 \times (\t
 
 ## 9. Backend API Overview
 
-The FastAPI backend exposes 16 documented REST endpoints and 1 WebSocket stream:
+The FastAPI backend exposes documented REST endpoints and 1 WebSocket stream:
 
 - `GET /api/health` — System status, DB connectivity, model artifact readiness, record count.
 - `GET /api/analytics/overview` — High-level metrics (`total_transactions`, `fraud_rate_pct`, `avg_risk_score`).
@@ -251,6 +258,14 @@ The FastAPI backend exposes 16 documented REST endpoints and 1 WebSocket stream:
 - `GET /api/customers` — Customer risk profiles and cumulative spend.
 - `GET /api/merchants` — Merchant volume spike ratios and anomaly alerts.
 - `GET /api/cases` — Analyst investigation case roster.
+- `POST /api/cases` — Open one transaction-linked investigation case; duplicates are rejected.
+- `GET|POST /api/cases/{case_id}/notes` — Read or append investigation notes.
+- `GET /api/cases/{case_id}/history` — Read append-only case history.
+- `GET /api/bulk-analysis/schema`, `GET /api/bulk-analysis/sample.csv` — Bulk upload schema and sample.
+- `POST /api/bulk-analysis/upload`, `GET /api/bulk-analysis/{analysis_id}` — Validate and analyze CSV rows without persisting transactions.
+- `GET /api/bulk-analysis/{analysis_id}/export` — Download sanitized analysis results.
+- `GET /api/rules`, `GET /api/rules/{rule_key}/history` — Effective rules and configuration history.
+- `PUT /api/rules/{rule_key}` — Version a rule override (requires `X-Admin-Token`).
 - `GET /api/models/metrics` — Serialized model performance metrics and confusion matrix.
 - `POST /api/models/retrain` — Pipeline retraining trigger (protected by concurrency lock and admin token).
 - `GET /api/export?type=csv` — Sanitized CSV streaming export (formula injection protected).
@@ -267,11 +282,12 @@ Built with React 18, Vite, and Tailwind CSS, the UI provides a professional fint
 1. **Overview Dashboard**: Database-backed transaction and label counts, saved model F1, decision distribution, trend data, and a separately labeled simulated stream.
 2. **Transactions Explorer**: Full transaction ledger with search, filtering by channel and risk tier, sorting, pagination, and a slide-over transaction detail drawer with VPA routing and SHAP attributions.
 3. **Fraud Analysis**: Interactive prediction form with 4 sample scenarios; the returned score and reasons are estimates, and the app does not process or block payments.
-4. **Alerts & Case Management**: Security incident feed with live status transitions (`Investigating`, `Resolved`).
+4. **Alerts & Case Management**: Security incident feed, transaction-linked cases, analyst notes, append-only history, and live status transitions.
 5. **Entity Directories**: Customer risk tiers and merchant volume spike ratio tracking.
 6. **Model Insights**: Saved model benchmarks, confusion matrix, validation threshold, and a read-only summary of modeled input signals. Metrics are from synthetic data.
-7. **Reports & Compliance**: CSV export and database counts; compliance references are explicitly informational and are not an assessment or certification.
-8. **System Administration**: Infrastructure health telemetry and runtime environment diagnostics.
+7. **Bulk Fraud Detection**: Bounded CSV validation and batch scoring, row-level reasons, sorting/filtering, and sanitized result export. Uploads are not persisted as transactions.
+8. **Reports & Compliance**: CSV export and database counts; compliance references are explicitly informational and are not an assessment or certification.
+9. **System Administration**: Infrastructure health telemetry and runtime environment diagnostics.
 
 ---
 
@@ -323,6 +339,13 @@ VITE_API_BASE_URL=http://localhost:8000
 VITE_WS_URL=ws://localhost:8000/ws/transactions
 ```
 
+### Step 5: Apply Database Migrations
+After configuring `DATABASE_URL` and creating the target database, apply the schema before starting the API:
+```powershell
+python -m alembic -c backend/alembic.ini upgrade head
+```
+For migration and existing-database safety guidance, see [`backend/MIGRATIONS.md`](backend/MIGRATIONS.md).
+
 ---
 
 ## 12. Running the Application Locally
@@ -350,11 +373,29 @@ npm run dev
 ## 13. Running Automated Tests & Production Builds
 
 ### Run Backend & Security Tests
-From the project root:
+Run the suite against a disposable migrated SQLite database so test writes cannot affect a development database:
 ```powershell
-python -m pytest tests/ -v
+$testDb = Join-Path $env:TEMP ("vaultguard-tests-" + [guid]::NewGuid().ToString("N") + ".db")
+$previousDatabaseUrl = $env:DATABASE_URL
+$env:DATABASE_URL = "sqlite:///$($testDb.Replace('\', '/'))"
+try {
+    python -m alembic -c backend/alembic.ini upgrade head
+    if ($LASTEXITCODE -ne 0) { throw "Database migration failed." }
+    python -c "from backend.app.services.data_loader import seed_database_on_first_run; seed_database_on_first_run()"
+    if ($LASTEXITCODE -ne 0) { throw "Test database seeding failed." }
+    python -m pytest tests/ -v
+    if ($LASTEXITCODE -ne 0) { throw "Backend tests failed." }
+}
+finally {
+    Remove-Item -LiteralPath $testDb -ErrorAction SilentlyContinue
+    if ($null -eq $previousDatabaseUrl) {
+        Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:DATABASE_URL = $previousDatabaseUrl
+    }
+}
 ```
-Test counts and warnings vary by environment; record the output from the current run rather than relying on a historical count.
 
 ### Run Frontend Production Build
 From the `frontend` directory:
@@ -365,14 +406,15 @@ npm run build
 The build compiles the production bundle; consult the current build output for module counts and bundle sizes.
 
 ### Current Verification Record
-- Backend suite: `49 passed, 5 warnings` (`tests/`). Warnings came from Starlette/httpx deprecation, SHAP colormap deprecations, and a single-class scikit-learn metric edge case.
-- Frontend production build: passed with Vite 5.4.21; 2,382 modules transformed.
+- Backend suite: `73 passed, 5 warnings` (`tests/`) on a disposable migrated and seeded SQLite database. Warnings came from Starlette/httpx deprecation, SHAP colormap deprecations, and a single-class scikit-learn metric edge case.
+- Backend and ML modules: Python compilation passed.
+- Frontend production build: passed with Vite 5.4.21; 2,383 modules transformed.
 - Browser smoke checks: overview loaded real database/model API values; prediction returned a score and recommendation; CSV endpoint returned HTTP 200 with a CSV header.
 - Responsive check: at a 385px document viewport, document and body widths matched; mobile menu behavior could not be confirmed consistently because the browser viewport emulator reset to desktop during interaction.
 - Not manually verified: every route at tablet/mobile sizes, every transaction filter combination, keyboard-only modal operation, and browser console cleanliness.
 
 ### Interface and reporting scope
-The default palette uses canvas `#F5F8FC`, white surfaces, primary text `#17243A`, teal `#0F766E`, blue `#2563EB`, and border `#E3EAF2`. CSV export is implemented; scheduled audit reports, loss-prevention estimates, regulatory enforcement, and rule-toggle controls are not claimed as working features.
+The default palette uses canvas `#F5F8FC`, white surfaces, primary text `#17243A`, teal `#0F766E`, blue `#2563EB`, and border `#E3EAF2`. CSV exports and versioned risk-rule configuration are implemented; scheduled audit reports, loss-prevention estimates, and regulatory enforcement are not claimed as working features. Rule overrides are managed through the admin-token-protected backend API rather than editable browser controls.
 
 ---
 

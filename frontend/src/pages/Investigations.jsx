@@ -20,8 +20,9 @@ const CASE_ACTIONS = [
 const displayStatus = (status) =>
   (status || '').replaceAll('_', ' ').replace(/^./, (letter) => letter.toUpperCase());
 
-const StatusActions = ({ item, kind, onUpdate, busy }) => (
+const StatusActions = ({ item, kind, onUpdate, onCreateCase, busy }) => (
   <div className="flex flex-wrap justify-end gap-1.5">
+    {kind === 'alert' && <button type="button" disabled={busy} onClick={() => onCreateCase(item)} className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700 hover:border-blue-500 disabled:opacity-50">Open case</button>}
     {CASE_ACTIONS.map((action) => (
       <button
         key={action.status}
@@ -81,6 +82,22 @@ export const Investigations = () => {
       await fetchCases();
     } catch (err) {
       setError(err.message || 'Unable to update case status.');
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const handleCreateCase = async (alert) => {
+    setSavingId(`alert:${alert.id}`);
+    setError(null);
+    try {
+      await apiClient.createCase({
+        transaction_id: alert.transaction_id,
+        severity: alert.risk_category === 'HIGH_RISK' ? 'HIGH' : 'MEDIUM',
+      });
+      await fetchCases();
+    } catch (err) {
+      setError(err.message || 'Unable to create an investigation case.');
     } finally {
       setSavingId(null);
     }
@@ -194,7 +211,7 @@ export const Investigations = () => {
                     <td className="px-3 py-3"><span className={`rounded border px-2 py-1 font-semibold ${style.bg} ${style.border} ${style.text}`}>{Number(alert.risk_score).toFixed(1)} / 100</span></td>
                     <td className="max-w-xs px-3 py-3">{alert.reasons?.length ? alert.reasons.join('; ') : 'No reason details provided'}</td>
                     <td className="px-3 py-3"><span className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-semibold text-slate-700">{displayStatus(alert.status)}</span></td>
-                    <td className="px-3 py-3"><StatusActions item={alert} kind="alert" onUpdate={handleStatusUpdate} busy={busy} /></td>
+                    <td className="px-3 py-3"><StatusActions item={alert} kind="alert" onUpdate={handleStatusUpdate} onCreateCase={handleCreateCase} busy={busy} /></td>
                   </tr>
                 );
               })}
@@ -238,7 +255,7 @@ export const Investigations = () => {
                     <td className="px-3 py-3"><span className={style.text}>{Number(item.risk_score).toFixed(1)} / 100</span></td>
                     <td className="px-3 py-3">{item.assigned_analyst || 'Unassigned'}</td>
                     <td className="px-3 py-3"><span className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-semibold text-slate-700">{displayStatus(item.status)}</span></td>
-                    <td className="px-3 py-3"><StatusActions item={item} kind="case" onUpdate={handleStatusUpdate} busy={busy} /></td>
+                    <td className="px-3 py-3"><StatusActions item={item} kind="case" onUpdate={handleStatusUpdate} onCreateCase={handleCreateCase} busy={busy} /></td>
                   </tr>
                 );
               })}

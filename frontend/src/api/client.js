@@ -105,6 +105,7 @@ export const apiClient = {
     if (params.limit) query.set('limit', params.limit);
     if (params.status && params.status !== 'All') query.set('status', params.status);
     if (params.segment && params.segment !== 'All') query.set('segment', params.segment);
+    if (params.severity && params.severity !== 'All') query.set('severity', params.severity);
     if (params.search) query.set('search', params.search);
 
     const qs = query.toString();
@@ -172,6 +173,18 @@ export const apiClient = {
       body: JSON.stringify({ status }),
     }),
 
+  createCase: (payload) =>
+    request('/api/cases', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  getCaseNotes: (caseId) => request(`/api/cases/${encodeURIComponent(caseId)}/notes`),
+  addCaseNote: (caseId, payload) => request(`/api/cases/${encodeURIComponent(caseId)}/notes`, {
+    method: 'POST', body: JSON.stringify(payload),
+  }),
+  getCaseHistory: (caseId) => request(`/api/cases/${encodeURIComponent(caseId)}/history`),
+
   updateFraudAlertStatus: (alertId, status) =>
     request(`/api/fraud-alerts/${alertId}/status`, {
       method: 'PATCH',
@@ -185,6 +198,22 @@ export const apiClient = {
     request('/api/models/retrain', {
       method: 'POST',
     }),
+
+  uploadBulkCsv: async (file) => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await fetch(`${BASE_URL}/api/bulk-analysis/upload`, { method: 'POST', body: form });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new ApiError(body.detail || `Upload failed (${response.status})`, response.status, body);
+    }
+    return response.json();
+  },
+  getBulkSchema: () => request('/api/bulk-analysis/schema'),
+  getBulkSampleUrl: () => `${BASE_URL}/api/bulk-analysis/sample.csv`,
+  getBulkExportUrl: (analysisId) => `${BASE_URL}/api/bulk-analysis/${encodeURIComponent(analysisId)}/export`,
+
+  getRules: () => request('/api/rules'),
 
   // Export URL helper
   getExportUrl: () => `${BASE_URL}/api/export?type=csv`,

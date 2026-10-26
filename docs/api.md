@@ -142,6 +142,14 @@ The VaultGuard backend provides RESTful endpoints built with FastAPI and an asyn
     "xgb_probability": 0.9856,
     "anomaly_score": 0.524,
     "fraud_probability": 0.9856,
+    "rule_signals": [
+      {
+        "rule_id": "device_sim_change",
+        "severity": "high",
+        "message": "New device and recent SIM change were both reported."
+      }
+    ],
+    "recommended_action": "Review Required",
     "model_version": "v1.0.0-xgb-iso-hybrid",
     "scoring_timestamp": "2026-10-13T16:15:30.123456Z"
   }
@@ -243,7 +251,34 @@ The VaultGuard backend provides RESTful endpoints built with FastAPI and an asyn
 
 ### `GET /api/cases`
 - **Description**: Retrieves analyst investigation case files.
-- **Query Parameters**: `status` (`Open`, `In Review`, `Closed`), `search`, `page`, `limit`.
+- **Query Parameters**: `status` (`Open`, `Under Review`, `Escalated`, `False Positive`, `Confirmed Fraud`, `Resolved`), `search`, `page`, `limit`.
+
+### `POST /api/cases`
+- **Description**: Opens a case for a persisted transaction. Each transaction can have at most one linked case.
+- **Request Body**:
+  ```json
+  {
+    "transaction_id": "TXN_LIVE_90210",
+    "severity": "HIGH",
+    "assigned_analyst": "Unassigned"
+  }
+  ```
+- **Headers**: Optional `X-Analyst` identifies the actor recorded in case history.
+- **Responses**: `201 Created`; `404 Not Found` for an unknown transaction; `409 Conflict` if a case already exists for the transaction.
+
+### `GET /api/cases/{case_id}/notes`
+- **Description**: Returns append-only analyst notes, newest first.
+- **Responses**: `200 OK`; `404 Not Found` for an unknown case.
+
+### `POST /api/cases/{case_id}/notes`
+- **Description**: Appends an analyst note and a corresponding case-history event.
+- **Request Body**: `{ "note": "Reviewed device telemetry." }`
+- **Headers**: Optional `X-Analyst` records the note author.
+- **Responses**: `201 Created`; `404 Not Found` for an unknown case.
+
+### `GET /api/cases/{case_id}/history`
+- **Description**: Returns append-only creation, status-change, and note events, newest first.
+- **Responses**: `200 OK`; `404 Not Found` for an unknown case.
 
 ### `GET /api/cases/active`
 - **Description**: Returns active persisted cases and fraud alerts. Fraud alert rows include transaction amount, channel, timestamp, risk score, and stored reason strings when a matching transaction exists. Simulated WebSocket events are not included.
@@ -265,7 +300,43 @@ The VaultGuard backend provides RESTful endpoints built with FastAPI and an asyn
 
 ---
 
-## 7. Model Governance & Administrative Controls
+## 7. Bulk CSV Analysis
+
+### `GET /api/bulk-analysis/schema`
+- **Description**: Returns required and optional CSV columns and configured upload limits.
+
+### `GET /api/bulk-analysis/sample.csv`
+- **Description**: Downloads a valid example CSV.
+
+### `POST /api/bulk-analysis/upload`
+- **Description**: Validates and scores a CSV without persisting uploaded transactions. Predictions and any supplied labels remain separate; supplied labels are treated as unverified user input.
+- **Request**: Multipart form field `file` containing a UTF-8 CSV. Required columns are `transaction_id`, `timestamp`, `amount_inr`, and `sender_id`. Defaults are a 5 MiB upload limit and 10,000 rows.
+- **Response** (`200 OK`): Includes an analysis ID, summary counts, and row-level validation and prediction results. Results are held in memory for a limited time.
+- **Error Responses**: `415 Unsupported Media Type` for unsupported content types; `422 Unprocessable Entity` for empty, malformed, oversized, or structurally invalid CSV.
+
+### `GET /api/bulk-analysis/{analysis_id}`
+- **Description**: Returns a previous analysis result while it remains in the process-local result cache.
+- **Error Responses**: `404 Not Found` if the result is unavailable or expired.
+
+### `GET /api/bulk-analysis/{analysis_id}/export`
+- **Description**: Downloads the analysis as a CSV with formula-injection sanitization.
+- **Error Responses**: `404 Not Found` if the result is unavailable or expired.
+
+## 8. Transparent Risk Rules
+
+### `GET /api/rules`
+- **Description**: Returns effective rule values, enabled states, versions, and update attribution.
+
+### `PUT /api/rules/{rule_key}`
+- **Description**: Creates or versions an override for one supported rule setting.
+- **Headers**: `X-Admin-Token` is required. Configure `VAULTGUARD_ADMIN_TOKEN` on the backend; editing returns `503` if it is unset and `401` if the supplied token is invalid. Optional `X-Analyst` is recorded in change history.
+- **Request Body**: `{ "value": 50000, "enabled": true }`
+- **Responses**: `200 OK`; `404 Not Found` for unsupported settings; `422 Unprocessable Entity` for invalid values.
+
+### `GET /api/rules/{rule_key}/history`
+- **Description**: Returns append-only changes to the selected rule setting.
+
+## 9. Model Governance & Administrative Controls
 
 ### `GET /api/models/metrics`
 - **Description**: Returns serialized model performance metrics, confusion matrix, and chronological dataset split summary.
@@ -296,7 +367,7 @@ The VaultGuard backend provides RESTful endpoints built with FastAPI and an asyn
 
 ---
 
-## 8. WebSocket Live Telemetry
+## 10. WebSocket Live Telemetry
 
 ### `WS /ws/transactions`
 - **Description**: Live WebSocket stream broadcasting simulated Indian payment transactions scored on-the-fly.

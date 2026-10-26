@@ -41,9 +41,12 @@ def load_models() -> Dict:
     feature_names_path = models_dir / "feature_names.joblib"
     metrics_path = models_dir / "metrics.json"
 
-    if not xgb_path.exists() or not iso_path.exists():
+    required_paths = [xgb_path, iso_path, explainer_path, feature_names_path]
+    missing = [path.name for path in required_paths if not path.exists()]
+    if missing:
         raise FileNotFoundError(
-            f"Saved models not found in {models_dir}. Please run ml/train.py first."
+            "Required model artifacts are missing: " + ", ".join(missing) + ". "
+            "Run ml/train.py before starting scoring."
         )
 
     _MODELS_CACHE["xgb_model"] = joblib.load(xgb_path)

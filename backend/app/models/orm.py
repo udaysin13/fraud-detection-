@@ -44,8 +44,11 @@ class TransactionORM(Base):
     segment = Column(String, nullable=True)
 
     # Labels — only for offline labeled data, never used as inference input
-    is_fraud = Column(Integer, default=0)
+    # NULL means no verified outcome exists; model predictions never populate this.
+    is_fraud = Column(Integer, nullable=True, default=None)
     fraud_pattern = Column(String, nullable=True)
+    label_source = Column(String, nullable=True)
+    label_confirmed_at = Column(DateTime, nullable=True)
 
     # Scoring results
     risk_score = Column(Float, default=0.0)
@@ -94,6 +97,23 @@ class AlertORM(Base):
     time_ago = Column(String, nullable=False)
     status = Column(String, index=True, default="Monitoring")
     assignee = Column(String, nullable=False)
+    severity = Column(String, index=True, default="MEDIUM")
+    acknowledged_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+
+class AlertHistoryORM(Base):
+    """Append-only lifecycle events for operational alerts."""
+    __tablename__ = "alert_history"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    alert_id = Column(Integer, index=True, nullable=False)
+    event_type = Column(String, nullable=False)
+    previous_status = Column(String, nullable=True)
+    new_status = Column(String, nullable=True)
+    actor = Column(String, nullable=False, default="system")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
@@ -151,4 +171,65 @@ class CaseORM(Base):
     risk_score = Column(Float, default=0.0)
     status = Column(String, default="Open")
     assigned_analyst = Column(String, default="Unassigned")
+    transaction_id = Column(String, nullable=True)
+    severity = Column(String, default="MEDIUM", index=True)
+    outcome = Column(String, nullable=True)
+    closure_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("uq_cases_transaction_id", "transaction_id", unique=True),
+    )
+
+
+class CaseNoteORM(Base):
+    __tablename__ = "case_notes"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    case_id = Column(String, index=True, nullable=False)
+    note = Column(Text, nullable=False)
+    author = Column(String, nullable=False, default="system")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class CaseHistoryORM(Base):
+    __tablename__ = "case_history"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    case_id = Column(String, index=True, nullable=False)
+    event_type = Column(String, nullable=False)
+    previous_status = Column(String, nullable=True)
+    new_status = Column(String, nullable=True)
+    actor = Column(String, nullable=False, default="system")
+    detail = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class RuleConfigORM(Base):
+    """Persisted override for a bounded set of supported risk-rule thresholds."""
+    __tablename__ = "rule_configs"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    rule_key = Column(String, unique=True, index=True, nullable=False)
+    value = Column(Float, nullable=False)
+    enabled = Column(Integer, nullable=False, default=1)
+    version = Column(Integer, nullable=False, default=1)
+    updated_by = Column(String, nullable=False, default="system")
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+
+class RuleHistoryORM(Base):
+    __tablename__ = "rule_history"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    rule_key = Column(String, index=True, nullable=False)
+    previous_value = Column(Float, nullable=True)
+    new_value = Column(Float, nullable=False)
+    previous_enabled = Column(Integer, nullable=True)
+    new_enabled = Column(Integer, nullable=False)
+    version = Column(Integer, nullable=False)
+    changed_by = Column(String, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

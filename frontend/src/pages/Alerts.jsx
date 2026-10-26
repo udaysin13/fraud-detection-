@@ -26,6 +26,7 @@ export const Alerts = () => {
 
   const [statusFilter, setStatusFilter] = useState('All');
   const [segmentFilter, setSegmentFilter] = useState('All');
+  const [severityFilter, setSeverityFilter] = useState('All');
   const [selectedAlert, setSelectedAlert] = useState(null);
 
   const fetchAlerts = useCallback(async () => {
@@ -36,6 +37,7 @@ export const Alerts = () => {
         limit: 50,
         status: statusFilter,
         segment: segmentFilter,
+        severity: severityFilter,
         search: searchQuery,
       });
       setAlerts(data || []);
@@ -45,15 +47,15 @@ export const Alerts = () => {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, segmentFilter, searchQuery]);
+  }, [statusFilter, segmentFilter, severityFilter, searchQuery]);
 
   useEffect(() => {
     fetchAlerts();
   }, [fetchAlerts]);
 
-  const handleUpdateAlertStatus = async (alertId, newStatus) => {
+  const handleUpdateAlert = async (alertId, payload) => {
     try {
-      const updated = await apiClient.updateAlert(alertId, { status: newStatus });
+      const updated = await apiClient.updateAlert(alertId, payload);
       setAlerts((prev) => prev.map((a) => (a.id === alertId ? updated : a)));
       if (selectedAlert && selectedAlert.id === alertId) {
         setSelectedAlert(updated);
@@ -62,6 +64,9 @@ export const Alerts = () => {
       console.error('Failed to update alert status:', err);
     }
   };
+
+  const handleUpdateAlertStatus = (alertId, newStatus) =>
+    handleUpdateAlert(alertId, { status: newStatus });
 
   const getStatusBadgeStyle = (status) => {
     switch (status) {
@@ -155,6 +160,19 @@ export const Alerts = () => {
               <option value="IMPS">IMPS</option>
             </select>
 
+            <select
+              value={severityFilter}
+              onChange={(e) => setSeverityFilter(e.target.value)}
+              className="bg-slate-50 border border-slate-200 text-slate-700 rounded-lg px-2.5 py-1.5 font-semibold focus:outline-none focus:border-teal-500"
+              aria-label="Filter by alert severity"
+            >
+              <option value="All">All Severities</option>
+              <option value="CRITICAL">Critical</option>
+              <option value="HIGH">High</option>
+              <option value="MEDIUM">Medium</option>
+              <option value="LOW">Low</option>
+            </select>
+
             <button
               onClick={fetchAlerts}
               className="p-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-400 hover:text-slate-800 transition-colors"
@@ -173,6 +191,7 @@ export const Alerts = () => {
                 <th className="py-2.5 px-3">Alert Code</th>
                 <th className="py-2.5 px-3">Anomaly Title</th>
                 <th className="py-2.5 px-3">Payment Segment</th>
+                <th className="py-2.5 px-3">Severity</th>
                 <th className="py-2.5 px-3">Assigned Analyst</th>
                 <th className="py-2.5 px-3">Time</th>
                 <th className="py-2.5 px-3">Review Status</th>
@@ -182,14 +201,14 @@ export const Alerts = () => {
             <tbody className="divide-y divide-slate-800/60 font-medium">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     <RefreshCw className="w-6 h-6 animate-spin text-teal-600 mx-auto mb-2" />
                     <p>Loading security alert logs...</p>
                   </td>
                 </tr>
               ) : alerts.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-500 italic">
+                  <td colSpan={8} className="py-12 text-center text-slate-500 italic">
                     No alerts found for current criteria.
                   </td>
                 </tr>
@@ -208,6 +227,11 @@ export const Alerts = () => {
                     </td>
                     <td className="py-3 px-3 text-[11px] text-slate-400">
                       {a.segment}
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className={`rounded border px-2 py-0.5 text-[10px] font-bold ${a.severity === 'CRITICAL' ? 'border-rose-200 bg-rose-50 text-rose-700' : a.severity === 'HIGH' ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
+                        {a.severity || 'MEDIUM'}
+                      </span>
                     </td>
                     <td className="py-3 px-3 text-slate-600">
                       {a.assignee}
@@ -258,6 +282,7 @@ export const Alerts = () => {
         alert={selectedAlert}
         onClose={() => setSelectedAlert(null)}
         onUpdateStatus={handleUpdateAlertStatus}
+        onAcknowledge={(alertId, acknowledge) => handleUpdateAlert(alertId, { acknowledge })}
       />
     </div>
   );

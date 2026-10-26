@@ -24,6 +24,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from backend.app.models.orm import TransactionORM
 from ml.predict import load_models, score_transaction
 from ml.train import train_models
+from backend.app.services.risk_rules import evaluate_transaction_rules, recommended_action
 
 _MODEL_CACHE: Optional[Dict] = None
 
@@ -175,6 +176,13 @@ def predict_single_transaction(
 
     # 2. Score via hybrid ML models
     scoring_result = score_transaction(txn, history_df=history_df)
+
+    # Rules are transparent decision-support signals and do not modify ML outputs.
+    rule_signals = evaluate_transaction_rules(txn, history_df=history_df, db=db)
+    scoring_result["rule_signals"] = rule_signals
+    scoring_result["recommended_action"] = recommended_action(
+        scoring_result["risk_category"], rule_signals
+    )
 
     # 3. Augment with metadata
     scoring_result["model_version"] = "v1.0.0-xgb-iso-hybrid"

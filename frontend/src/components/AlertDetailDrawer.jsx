@@ -1,7 +1,7 @@
 import React from 'react';
 import { X, ShieldAlert, Clock, User, Tag, CheckCircle2 } from 'lucide-react';
 
-export const AlertDetailDrawer = ({ alert, onClose, onUpdateStatus }) => {
+export const AlertDetailDrawer = ({ alert, onClose, onUpdateStatus, onAcknowledge }) => {
   if (!alert) return null;
 
   const getStatusBadge = (status) => {
@@ -68,16 +68,16 @@ export const AlertDetailDrawer = ({ alert, onClose, onUpdateStatus }) => {
             </h4>
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div className="bg-[#111827] p-3 rounded-lg border border-slate-800">
-                <p className="text-slate-400 text-[11px]">Primary Vector</p>
-                <p className="font-bold text-white mt-0.5">Micro-burst Anomaly</p>
+                <p className="text-slate-400 text-[11px]">Severity</p>
+                <p className="font-bold text-white mt-0.5">{alert.severity || 'MEDIUM'}</p>
               </div>
               <div className="bg-[#111827] p-3 rounded-lg border border-slate-800">
                 <p className="text-slate-400 text-[11px]">Payment Channel</p>
                 <p className="font-bold text-white mt-0.5">{alert.segment}</p>
               </div>
               <div className="bg-[#111827] p-3 rounded-lg border border-slate-800">
-                <p className="text-slate-400 text-[11px]">Detection Source</p>
-                <p className="font-bold text-teal-400 mt-0.5">Hybrid Engine</p>
+                <p className="text-slate-400 text-[11px]">Acknowledgement</p>
+                <p className="font-bold text-teal-400 mt-0.5">{alert.acknowledged_at ? 'Acknowledged' : 'Not acknowledged'}</p>
               </div>
               <div className="bg-[#111827] p-3 rounded-lg border border-slate-800">
                 <p className="text-slate-400 text-[11px]">Assigned Analyst</p>
@@ -104,6 +104,12 @@ export const AlertDetailDrawer = ({ alert, onClose, onUpdateStatus }) => {
                 </button>
               ))}
             </div>
+            <button
+              onClick={() => onAcknowledge?.(alert.id, !alert.acknowledged_at)}
+              className="w-full py-2 rounded-lg text-xs font-bold border bg-[#161F30] text-slate-300 border-slate-800 hover:border-teal-500"
+            >
+              {alert.acknowledged_at ? 'Clear acknowledgement' : 'Acknowledge alert'}
+            </button>
           </div>
         </div>
 

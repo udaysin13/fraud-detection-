@@ -6,6 +6,7 @@ import { Layout } from './components/Layout';
 import { Overview } from './pages/Overview';
 import { Transactions } from './pages/Transactions';
 import { FraudDetection } from './pages/FraudDetection';
+import { BulkFraudDetection } from './pages/BulkFraudDetection';
 import { Investigations } from './pages/Investigations';
 import { Customers } from './pages/Customers';
 import { Merchants } from './pages/Merchants';
@@ -24,6 +25,7 @@ export default function App() {
             <Route index element={<Overview />} />
             <Route path="transactions" element={<Transactions />} />
             <Route path="fraud-detection" element={<FraudDetection />} />
+            <Route path="bulk-fraud-detection" element={<BulkFraudDetection />} />
             <Route path="investigations" element={<Investigations />} />
             <Route path="customers" element={<Customers />} />
             <Route path="merchants" element={<Merchants />} />
