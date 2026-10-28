@@ -312,7 +312,7 @@ export const Overview = () => {
                     dataKey="timestamp"
                     stroke="#64748B"
                     tick={{ fill: '#94A3B8', fontSize: 10 }}
-                    tickFormatter={(val) => val.split(' ').pop() || val}
+                    tickFormatter={(val) => String(val || '').split(' ').pop() || String(val || '')}
                   />
                   <YAxis stroke="#64748B" tick={{ fill: '#94A3B8', fontSize: 10 }} />
                   <Tooltip
@@ -373,6 +373,11 @@ export const Overview = () => {
           <div className="h-52 w-full relative flex items-center justify-center">
             {loading ? (
               <RefreshCw className="w-6 h-6 animate-spin text-teal-400" />
+            ) : riskDistributionData.every((item) => Number(item.value || 0) === 0) ? (
+              <div className="px-4 text-center text-xs text-slate-400">
+                <Layers className="mx-auto mb-2 h-7 w-7 opacity-60" />
+                <p>No decision counts are available yet.</p>
+              </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
