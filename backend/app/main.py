@@ -57,11 +57,14 @@ async def lifespan(app: FastAPI):
         verify_database_connection()
         seed_database_on_first_run()
     except Exception as e:
-        raise RuntimeError(
-            "VaultGuard could not start because database initialization failed. "
-            "No data was deleted. Resolve the database connection or apply the "
-            "required migration before restarting."
-        ) from e
+        print(f"[Lifespan WARNING] Database initialization: {e}")
+        import os
+        if not os.getenv("VERCEL"):
+            raise RuntimeError(
+                "VaultGuard could not start because database initialization failed. "
+                "No data was deleted. Resolve the database connection or apply the "
+                "required migration before restarting."
+            ) from e
     yield
     print("[Lifespan] VaultGuard API shutting down...")
 

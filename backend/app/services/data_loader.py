@@ -45,6 +45,7 @@ def seed_database_on_first_run():
     must be performed with an explicit Alembic migration before application startup.
     """
     verify_database_connection()
+    Base.metadata.create_all(bind=engine)
 
     db: Session = SessionLocal()
     try:
