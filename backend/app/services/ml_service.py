@@ -40,6 +40,8 @@ def get_cached_models() -> Dict:
 def get_model_health() -> Dict:
     """Checks model artifacts readiness and metadata."""
     models_dir = PROJECT_ROOT / "ml" / "saved_models"
+    if not models_dir.exists():
+        models_dir = Path(__file__).resolve().parent.parent.parent / "ml" / "saved_models"
     xgb_path = models_dir / "xgboost_model.joblib"
     iso_path = models_dir / "isolation_forest.joblib"
     metrics_path = models_dir / "metrics.json"
