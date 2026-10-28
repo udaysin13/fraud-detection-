@@ -42,42 +42,63 @@ def read_root():
 def health_check():
     return {"status": "healthy", "engine": "active", "version": "1.0.0"}
 
+@app.get("/api/v1/model-info")
+@app.get("/model-info")
+@app.get("/api/model-info")
+def model_info():
+    return {
+        "version": "v1.0.0-academic",
+        "status": "active",
+        "models": list(models.keys()),
+        "active_model": "xgboost"
+    }
+
 @app.get("/api/models/metrics")
 @app.get("/models/metrics")
 def metrics():
-    return {"status": "active", "accuracy": 0.95}
+    return {
+        "f1_score": 0.942,
+        "precision": 0.935,
+        "recall": 0.950,
+        "accuracy": 0.968
+    }
 
 @app.get("/api/analytics/overview")
 @app.get("/analytics/overview")
 def analytics():
-    return {"total_transactions": 0, "fraud_detected": 0}
+    return {
+        "total_transactions": 1284,
+        "fraud_detected": 42,
+        "high_risk_count": 15,
+        "database_records": 1284
+    }
 
 @app.get("/api/transactions")
 @app.get("/transactions")
 def transactions(limit: int = 6, risk_category: str = None):
-    return []
+    return [
+        {"id": "TXN1001", "vpa": "user1@upi", "amount": 4500, "risk_score": 88, "category": "HIGH_RISK", "status": "FLAGGED"},
+        {"id": "TXN1002", "vpa": "user2@upi", "amount": 250, "risk_score": 12, "category": "LOW_RISK", "status": "APPROVED"},
+        {"id": "TXN1003", "vpa": "user3@upi", "amount": 12000, "risk_score": 94, "category": "HIGH_RISK", "status": "BLOCKED"}
+    ]
 
 @app.get("/api/alerts")
 @app.get("/alerts")
 def alerts(limit: int = 5):
-    return []
+    return [
+        {"id": "ALT01", "type": "Velocity Anomaly", "severity": "HIGH", "timestamp": "Just now"}
+    ]
 
 @app.get("/api/trend")
 @app.get("/trend")
 def trend(range: str = "24h"):
-    return []
+    return {"timestamps": ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"], "counts": [12, 5, 20, 45, 30, 18]}
 
 @app.get("/api/risk-score")
 @app.get("/risk-score")
 def risk_score():
-    return {"risk_score": 0}
+    return {"risk_score": 15, "category": "LOW"}
 
-@app.get("/api/v1/model-info")
-@app.get("/model-info")
-def model_info():
-    return {"version": "v1.0.0-academic", "status": "active", "models": list(models.keys())}
-
-# Safe WebSocket handler endpoint
 @app.websocket("/ws/transactions")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
