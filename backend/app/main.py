@@ -5,10 +5,27 @@ VaultGuard - FastAPI Main Application Entrypoint
 import sys
 from pathlib import Path
 
-# Add project root directory to sys.path
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+# Add project root directory and backend directory to sys.path
+CURRENT_FILE = Path(__file__).resolve()
+BACKEND_DIR = CURRENT_FILE.parent.parent
+PROJECT_ROOT = BACKEND_DIR.parent
+
+for path_dir in [str(PROJECT_ROOT), str(BACKEND_DIR)]:
+    if path_dir not in sys.path:
+        sys.path.insert(0, path_dir)
+
+# Support standalone deployment where backend directory is root (e.g., Vercel)
+if "backend" not in sys.modules:
+    try:
+        import backend  # noqa: F401
+    except ImportError:
+        import types
+        backend_pkg = types.ModuleType("backend")
+        backend_pkg.__path__ = [str(BACKEND_DIR)]
+        sys.modules["backend"] = backend_pkg
+        import app
+        backend_pkg.app = app
+        sys.modules["backend.app"] = app
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends
@@ -58,22 +75,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Secure CORS configuration: Explicit trusted origins for Vite development and production
-import os
-
-default_origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
-env_origins = os.getenv("ALLOWED_ORIGINS", "")
-allowed_origins = [o.strip() for o in env_origins.split(",") if o.strip()] if env_origins else default_origins
-
+# CORS configuration: Allow all origins for Vercel full-stack deployment
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+)(:\d+)?$",
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
