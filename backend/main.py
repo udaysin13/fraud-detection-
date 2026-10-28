@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="VaultGuard Fraud Engine")
 
+# Allow all CORS origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -36,10 +37,42 @@ for name, path in model_files.items():
 def read_root():
     return {"status": "online", "message": "Fraud Detection API Running"}
 
+# Endpoints with both /api prefix and normal routes
 @app.get("/health")
+@app.get("/api/health")
 @app.get("/api/v1/health")
 def health_check():
     return {"status": "healthy", "engine": "active", "version": "1.0.0"}
+
+@app.get("/api/models/metrics")
+@app.get("/models/metrics")
+def metrics():
+    return {"status": "active", "accuracy": 0.95}
+
+@app.get("/api/analytics/overview")
+@app.get("/analytics/overview")
+def analytics():
+    return {"total_transactions": 0, "fraud_detected": 0}
+
+@app.get("/api/transactions")
+@app.get("/transactions")
+def transactions(limit: int = 6, risk_category: str = None):
+    return []
+
+@app.get("/api/alerts")
+@app.get("/alerts")
+def alerts(limit: int = 5):
+    return []
+
+@app.get("/api/trend")
+@app.get("/trend")
+def trend(range: str = "24h"):
+    return []
+
+@app.get("/api/risk-score")
+@app.get("/risk-score")
+def risk_score():
+    return {"risk_score": 0}
 
 @app.get("/api/v1/model-info")
 @app.get("/model-info")
