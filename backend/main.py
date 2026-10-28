@@ -6,10 +6,11 @@ from typing import Optional, Dict, Any
 
 app = FastAPI(title="VaultGuard Fraud Engine")
 
+# Explicit wildcard CORS headers for preflight requests
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -104,7 +105,7 @@ def risk_score():
     return [
         {"name": "Low Risk", "label": "Low Risk", "value": 1250, "count": 1250, "color": "#10B981"},
         {"name": "Medium Risk", "label": "Medium Risk", "value": 138, "count": 138, "color": "#F59E0B"},
-        {"name": "High Risk", "label": "High Risk", "value": 32, "color": "#EF4444"}
+        {"name": "High Risk", "label": "High Risk", "value": 32, "count": 32, "color": "#EF4444"}
     ]
 
 @app.get("/api/transactions")
@@ -171,12 +172,8 @@ def transactions(limit: int = 6, risk_category: str = None):
         }
     ]
 
-# Complete prediction payload matching simulator schema
-@app.route("/api/predict", methods=["GET", "POST", "OPTIONS"])
-@app.route("/predict", methods=["GET", "POST", "OPTIONS"])
-@app.route("/api/v1/predict", methods=["GET", "POST", "OPTIONS"])
-@app.route("/api/analyze", methods=["GET", "POST", "OPTIONS"])
-async def predict_handler(request: Request):
+# Robust Prediction API for POST, GET, OPTIONS
+def get_prediction_data():
     return {
         "status": "success",
         "risk_score": 88,
@@ -202,6 +199,24 @@ async def predict_handler(request: Request):
             "High transaction amount to first-time beneficiary VPA"
         ]
     }
+
+@app.post("/api/predict")
+@app.post("/predict")
+@app.post("/api/v1/predict")
+@app.post("/api/analyze")
+@app.get("/api/predict")
+@app.get("/predict")
+@app.get("/api/v1/predict")
+@app.get("/api/analyze")
+async def predict_endpoint(request: Request):
+    return get_prediction_data()
+
+@app.options("/api/predict")
+@app.options("/predict")
+@app.options("/api/v1/predict")
+@app.options("/api/analyze")
+async def predict_options():
+    return {"status": "ok"}
 
 @app.get("/api/alerts")
 @app.get("/alerts")
