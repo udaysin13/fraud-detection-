@@ -3,7 +3,7 @@
  * Wraps all backend endpoints with structured error handling, timeouts, and configuration.
  */
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || "https://fraud-detection-three-kappa.vercel.app";
 
 export class ApiError extends Error {
   constructor(message, status = 0, details = null) {

@@ -11,7 +11,7 @@ export const BackendErrorBanner = ({ error, onRetry, isRetrying = false }) => {
         <div>
           <span className="font-bold text-rose-200">Backend Communication Issue</span>
           <p className="text-[11px] text-rose-300/80 mt-0.5 truncate max-w-xl">
-            {error || 'Cannot reach FastAPI service at http://localhost:8000.'}
+            
           </p>
         </div>
       </div>

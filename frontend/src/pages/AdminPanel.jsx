@@ -94,7 +94,7 @@ export const AdminPanel = () => {
 
           <div className="flex justify-between items-center">
             <span className="text-slate-400 font-medium">Frontend API Base URL:</span>
-            <span className="font-mono text-slate-600">{import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}</span>
+            <span className="font-mono text-slate-600">{import.meta.env.VITE_API_BASE_URL || '[https://YOUR-NEW-BACKEND-URL.vercel.app](https://YOUR-NEW-BACKEND-URL.vercel.app)'}</span>
           </div>
         </div>
       </div>

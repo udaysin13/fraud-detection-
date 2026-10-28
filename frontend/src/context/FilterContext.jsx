@@ -3,7 +3,7 @@ import { apiClient } from '../api/client';
 
 const FilterContext = createContext(null);
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/transactions';
+const WS_URL = import.meta.env.VITE_WS_URL || 'wss://YOUR-NEW-BACKEND-URL.vercel.app';
 const MAX_LIVE_EVENTS = 30;
 const MAX_NOTIFICATIONS = 15;
 
