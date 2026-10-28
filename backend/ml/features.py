@@ -120,7 +120,18 @@ def engineer_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
         amount_series = data["amount"].astype(float)
     data["amount"] = amount_series
 
-    sender_col = "sender_id" if "sender_id" in data.columns else ("customer_id" if "customer_id" in data.columns else "card_id")
+    # Determine sender identifier column. If none of the expected columns exist, create a fallback column.
+    if "sender_id" in data.columns:
+        sender_col = "sender_id"
+    elif "customer_id" in data.columns:
+        sender_col = "customer_id"
+    elif "card_id" in data.columns:
+        sender_col = "card_id"
+    else:
+        # Create a constant placeholder column for grouping to avoid KeyError.
+        fallback_col = "unknown_sender"
+        data[fallback_col] = "unknown"
+        sender_col = fallback_col
     bene_col = "beneficiary_id" if "beneficiary_id" in data.columns else "merchant_id"
 
     # 2. Amount Flags & Structuring Checks
