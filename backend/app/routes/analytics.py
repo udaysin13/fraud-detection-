@@ -151,23 +151,38 @@ def get_fraud_trend(
         "30d": pd.Timedelta(days=30),
     }[range]
     window_start = pd.Timestamp.now(tz="UTC") - range_window
+    df = df[df["timestamp_dt"].notna()]
     df = df[df["timestamp_dt"] >= window_start]
+    used_historical_fallback = False
+    if df.empty:
+        # Seed/demo datasets often contain historical timestamps. Show the latest
+        # available persisted records instead of returning an empty dashboard chart.
+        df = pd.DataFrame(txns, columns=["timestamp", "risk_score", "decision"])
+        df["timestamp_dt"] = pd.to_datetime(df["timestamp"], errors="coerce", utc=True)
+        df = df.dropna(subset=["timestamp_dt"]).sort_values("timestamp_dt").tail(3000)
+        used_historical_fallback = not df.empty
     if df.empty:
         return []
 
-    if range == "24h":
+    decisions = df["decision"].fillna("").astype(str).str.strip().str.lower()
+    df["is_blocked"] = decisions.isin(["block", "blocked"])
+    df["is_manual_review"] = decisions.isin(["manual review", "manual_review", "review"])
+
+    # If using historical fallback, bucket by actual stored dates so users can see
+    # where the available records came from; never fabricate transaction counts.
+    if range == "24h" and not used_historical_fallback:
         df["time_group"] = df["timestamp_dt"].dt.strftime("%Y-%m-%d %H:00")
-    elif range == "7d":
-        df["time_group"] = df["timestamp_dt"].dt.strftime("%Y-%m-%d")
+    elif range == "24h":
+        df["time_group"] = df["timestamp_dt"].dt.strftime("%Y-%m-%d %H:00")
     else:
         df["time_group"] = df["timestamp_dt"].dt.strftime("%Y-%m-%d")
 
     grouped = (
         df.groupby("time_group")
         .agg(
-            suspicious=("risk_score", lambda s: (s > 40.0).sum()),
-            blocked=("decision", lambda s: (s == "Block").sum()),
-            manual_review=("decision", lambda s: (s == "Manual Review").sum()),
+            suspicious=("risk_score", lambda s: (pd.to_numeric(s, errors="coerce").fillna(0) > 40.0).sum()),
+            blocked=("is_blocked", "sum"),
+            manual_review=("is_manual_review", "sum"),
         )
         .reset_index()
         .sort_values("time_group")
