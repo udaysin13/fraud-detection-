@@ -73,6 +73,14 @@ export const Transactions = () => {
     }
   }, [page, decisionFilter, riskCategoryFilter, channelFilter, searchQuery]);
 
+  // Keep the page-level channel filter synchronized with the global header filter.
+  // Without this, changing the header to "All Channels" can leave this page filtering
+  // by the previously selected channel because useState only reads its initial value.
+  useEffect(() => {
+    setChannelFilter(selectedChannel || 'All');
+    setPage(1);
+  }, [selectedChannel]);
+
   useEffect(() => {
     fetchTransactions();
   }, [fetchTransactions]);
