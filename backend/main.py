@@ -1,8 +1,7 @@
 import os
 import joblib
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from typing import Optional, Dict, Any
 
 app = FastAPI(title="VaultGuard Fraud Engine")
@@ -170,20 +169,16 @@ def transactions(limit: int = 6, risk_category: str = None):
         }
     ]
 
-# Simulation / Prediction Endpoints (POST & GET)
-@app.post("/predict")
-@app.post("/api/predict")
-@app.post("/api/v1/predict")
-@app.post("/analyze")
-@app.post("/api/analyze")
-@app.post("/api/v1/analyze")
-@app.get("/predict")
-@app.get("/api/predict")
-@app.get("/api/v1/predict")
-def predict_transaction(data: Optional[Dict[str, Any]] = None):
+# Explicit Prediction handlers for ALL HTTP methods
+@app.route("/api/predict", methods=["GET", "POST", "OPTIONS"])
+@app.route("/predict", methods=["GET", "POST", "OPTIONS"])
+@app.route("/api/v1/predict", methods=["GET", "POST", "OPTIONS"])
+@app.route("/api/analyze", methods=["GET", "POST", "OPTIONS"])
+async def predict_handler(request: Request):
     return {
         "status": "success",
         "risk_score": 88,
+        "risk_assessment": 88,
         "decision": "FLAGGED",
         "risk_tier": "HIGH_RISK",
         "confidence": 0.94,
