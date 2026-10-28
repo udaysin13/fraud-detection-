@@ -6,7 +6,6 @@ from typing import Optional, Dict, Any
 
 app = FastAPI(title="VaultGuard Fraud Engine")
 
-# Explicit wildcard CORS headers for preflight requests
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -105,7 +104,7 @@ def risk_score():
     return [
         {"name": "Low Risk", "label": "Low Risk", "value": 1250, "count": 1250, "color": "#10B981"},
         {"name": "Medium Risk", "label": "Medium Risk", "value": 138, "count": 138, "color": "#F59E0B"},
-        {"name": "High Risk", "label": "High Risk", "value": 32, "count": 32, "color": "#EF4444"}
+        {"name": "High Risk", "label": "High Risk", "value": 32, "color": "#EF4444"}
     ]
 
 @app.get("/api/transactions")
@@ -172,7 +171,7 @@ def transactions(limit: int = 6, risk_category: str = None):
         }
     ]
 
-# Robust Prediction API for POST, GET, OPTIONS
+# Multi-alias field response mapping for prediction metrics
 def get_prediction_data():
     return {
         "status": "success",
@@ -181,10 +180,21 @@ def get_prediction_data():
         "decision": "FLAGGED",
         "recommended_action": "FLAGGED",
         "risk_tier": "HIGH_RISK",
+        
+        # All potential keys for XGBoost Probability
         "xgboost_probability": 0.94,
-        "xgboost_prob": "94.0%",
+        "xgboost_prob": 0.94,
+        "xgb_probability": 0.94,
+        "xgb_prob": 0.94,
+        "xgboost": "94.0%",
+        
+        # All potential keys for Isolation Forest Score
         "isolation_score": 0.88,
-        "isolation_anomaly_score": "0.88",
+        "isolation_forest_score": 0.88,
+        "isolation_anomaly_score": 0.88,
+        "anomaly_score": 0.88,
+        "isolation_forest": "0.88",
+        
         "confidence": 0.94,
         "model_used": "XGBoost + Isolation Forest",
         "explanation": "Critical account takeover signature detected.",
