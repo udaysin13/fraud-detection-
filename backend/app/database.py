@@ -13,11 +13,15 @@ load_dotenv()
 
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 if not SQLALCHEMY_DATABASE_URL:
-    raise RuntimeError(
-        "DATABASE_URL must be configured in the environment or a local .env file. "
-        "Use sqlite:///backend/vaultguard.db for local development or "
-        "mysql+pymysql://USER:PASSWORD@localhost:3306/vaultguard_db for MySQL."
-    )
+    if os.getenv("VERCEL"):
+        SQLALCHEMY_DATABASE_URL = "sqlite:////tmp/vaultguard.db"
+    else:
+        from pathlib import Path
+        db_file = Path(__file__).resolve().parent.parent / "vaultguard.db"
+        if db_file.exists():
+            SQLALCHEMY_DATABASE_URL = f"sqlite:///{db_file.as_posix()}"
+        else:
+            SQLALCHEMY_DATABASE_URL = "sqlite:///backend/vaultguard.db"
 
 
 class DatabaseConnectionError(RuntimeError):
