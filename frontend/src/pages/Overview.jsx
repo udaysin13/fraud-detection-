@@ -104,10 +104,21 @@ export const Overview = () => {
       ]);
 
       setOverview(overviewRes);
-      const hasTrend = Array.isArray(trendRes) && trendRes.length > 0;
-      const fallbackTrend = hasTrend ? [] : buildTrendFallback(fallbackTransactions || []);
-      setTrendData(hasTrend ? trendRes : fallbackTrend);
-      setTrendUsingFallback(!hasTrend && fallbackTrend.length > 0);
+      // A non-empty API response can still contain only zeroes. Treat it as
+      // unusable chart data and derive the series from the latest transaction rows.
+      const hasMeaningfulTrend = Array.isArray(trendRes) && trendRes.some((point) =>
+        Number(point?.blocked || 0) > 0 ||
+        Number(point?.manual_review || 0) > 0 ||
+        Number(point?.suspicious || 0) > 0
+      );
+      const fallbackRows = Array.isArray(fallbackTransactions)
+        ? fallbackTransactions
+        : Array.isArray(fallbackTransactions?.items)
+          ? fallbackTransactions.items
+          : [];
+      const fallbackTrend = hasMeaningfulTrend ? [] : buildTrendFallback(fallbackRows);
+      setTrendData(hasMeaningfulTrend ? trendRes : fallbackTrend);
+      setTrendUsingFallback(!hasMeaningfulTrend && fallbackTrend.length > 0);
       setRiskSummary(riskRes);
       setRecentSuspicious(suspiciousRes || []);
       setRecentAlerts(alertsRes || []);
