@@ -44,6 +44,24 @@ import {
   getChannelLabel,
 } from '../utils/formatters';
 
+const buildTrendFallback = (transactions = []) => {
+  // The bundled/demo dataset can be older than the selected 24h/7d/30d window.
+  // Group the latest available persisted rows so the chart remains useful instead of blank.
+  const groups = new Map();
+  for (const txn of transactions) {
+    const parsed = new Date(txn.timestamp);
+    if (Number.isNaN(parsed.getTime())) continue;
+    const bucket = parsed.toISOString().slice(0, 13).replace('T', ' ');
+    const item = groups.get(bucket) || { timestamp: bucket, suspicious: 0, blocked: 0, manual_review: 0 };
+    const decision = String(txn.decision || '').trim().toLowerCase();
+    if (Number(txn.risk_score || 0) > 40) item.suspicious += 1;
+    if (decision === 'block' || decision === 'blocked') item.blocked += 1;
+    if (decision === 'manual review' || decision === 'manual_review' || decision === 'review') item.manual_review += 1;
+    groups.set(bucket, item);
+  }
+  return [...groups.values()].sort((a, b) => a.timestamp.localeCompare(b.timestamp)).slice(-24);
+};
+
 export const Overview = () => {
   const {
     timeRange,
@@ -59,6 +77,7 @@ export const Overview = () => {
   const [overview, setOverview] = useState(null);
   const [modelMetrics, setModelMetrics] = useState(null);
   const [trendData, setTrendData] = useState([]);
+  const [trendUsingFallback, setTrendUsingFallback] = useState(false);
   const [riskSummary, setRiskSummary] = useState(null);
   const [recentSuspicious, setRecentSuspicious] = useState([]);
   const [recentAlerts, setRecentAlerts] = useState([]);
@@ -73,21 +92,31 @@ export const Overview = () => {
     setError(null);
 
     try {
-      const [overviewRes, trendRes, riskRes, suspiciousRes, alertsRes, metricsRes] = await Promise.all([
-        apiClient.getAnalyticsOverview(),
-        apiClient.getTrend(timeRange),
-        apiClient.getRiskScoreSummary(),
-        apiClient.getTransactions({ limit: 6, risk_category: 'HIGH_RISK' }),
-        apiClient.getAlerts({ limit: 5 }),
-        apiClient.getModelMetrics().catch(() => null),
+      // Load dashboard panels independently: a single failing endpoint must not blank every chart.
+      const [overviewRes, trendRes, riskRes, suspiciousRes, alertsRes, metricsRes, fallbackTransactions] = await Promise.all([
+        apiClient.getAnalyticsOverview().catch((err) => { console.error('Overview metrics failed:', err); return null; }),
+        apiClient.getTrend(timeRange).catch((err) => { console.error('Trend endpoint failed:', err); return []; }),
+        apiClient.getRiskScoreSummary().catch((err) => { console.error('Risk summary failed:', err); return null; }),
+        apiClient.getTransactions({ limit: 6, risk_category: 'HIGH_RISK' }).catch((err) => { console.error('Suspicious transactions failed:', err); return []; }),
+        apiClient.getAlerts({ limit: 5 }).catch((err) => { console.error('Alerts failed:', err); return []; }),
+        apiClient.getModelMetrics().catch((err) => { console.error('Model metrics failed:', err); return null; }),
+        apiClient.getTransactions({ limit: 100 }).catch((err) => { console.error('Trend fallback records failed:', err); return []; }),
       ]);
 
       setOverview(overviewRes);
-      setTrendData(trendRes || []);
+      const hasTrend = Array.isArray(trendRes) && trendRes.length > 0;
+      const fallbackTrend = hasTrend ? [] : buildTrendFallback(fallbackTransactions || []);
+      setTrendData(hasTrend ? trendRes : fallbackTrend);
+      setTrendUsingFallback(!hasTrend && fallbackTrend.length > 0);
       setRiskSummary(riskRes);
       setRecentSuspicious(suspiciousRes || []);
       setRecentAlerts(alertsRes || []);
       setModelMetrics(metricsRes);
+      if (!overviewRes && (!fallbackTransactions || fallbackTransactions.length === 0)) {
+        setError('Dashboard data could not be loaded. Please check backend health and retry.');
+      } else {
+        setError(null);
+      }
     } catch (err) {
       console.error('Failed to fetch overview data:', err);
       setError(err.message || 'Unable to connect to VaultGuard backend service.');
@@ -260,7 +289,7 @@ export const Overview = () => {
                 </span>
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                Persisted transaction counts by time bucket and decision category
+                {trendUsingFallback ? 'Latest available database records (no recent records in selected window)' : 'Persisted transaction counts by time bucket and decision category'}
               </p>
             </div>
           </div>
@@ -273,7 +302,7 @@ export const Overview = () => {
             ) : trendData.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-slate-500 text-xs">
                 <Clock className="w-8 h-8 mb-2 opacity-50" />
-                <p>No telemetry recorded for the selected window.</p>
+                <p>No transaction timestamps are available to plot.</p>
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
