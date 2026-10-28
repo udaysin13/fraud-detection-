@@ -42,7 +42,6 @@ def read_root():
 def health_check():
     return {"status": "healthy", "engine": "active", "version": "v1.0.0-academic"}
 
-# 1. Fix Model Info Endpoint Keys
 @app.get("/api/v1/model-info")
 @app.get("/model-info")
 @app.get("/api/model-info")
@@ -56,7 +55,6 @@ def model_info():
         "active_model": "xgboost"
     }
 
-# 2. Fix Analytics Overview
 @app.get("/api/analytics/overview")
 @app.get("/analytics/overview")
 @app.get("/api/v1/analytics/overview")
@@ -83,7 +81,6 @@ def metrics():
         "accuracy": 0.968
     }
 
-# 3. Fix Risk Decisions Over Time (Trend Chart)
 @app.get("/api/trend")
 @app.get("/trend")
 @app.get("/api/v1/trend")
@@ -97,7 +94,6 @@ def trend(range: str = "24h"):
         {"timestamp": "20:00", "time": "20:00", "total": 220, "low_risk": 200, "medium_risk": 12, "high_risk": 8, "fraud": 4, "count": 220}
     ]
 
-# 4. Fix Risk Category Breakdown (Pie / Donut Chart)
 @app.get("/api/risk-score")
 @app.get("/risk-score")
 @app.get("/api/v1/risk-score")
@@ -113,14 +109,69 @@ def risk_score():
         ]
     }
 
+# Complete transaction data schema for table rendering
 @app.get("/api/transactions")
 @app.get("/transactions")
 @app.get("/api/v1/transactions")
 def transactions(limit: int = 6, risk_category: str = None):
     return [
-        {"id": "TXN1001", "vpa": "user1@upi", "amount": 4500, "risk_score": 88, "category": "HIGH_RISK", "status": "FLAGGED"},
-        {"id": "TXN1002", "vpa": "user2@upi", "amount": 250, "risk_score": 12, "category": "LOW_RISK", "status": "APPROVED"},
-        {"id": "TXN1003", "vpa": "user3@upi", "amount": 12000, "risk_score": 94, "category": "HIGH_RISK", "status": "BLOCKED"}
+        {
+            "id": "TXN1001",
+            "transaction_id": "TXN1001",
+            "timestamp": "2026-10-28 19:10:00",
+            "time": "19:10:00",
+            "channel": "UPI Payment",
+            "type": "Transfer",
+            "amount": 4500.0,
+            "sender": "rahul@upi",
+            "beneficiary": "merchant@icici",
+            "from_user": "rahul@upi",
+            "to_user": "merchant@icici",
+            "risk_score": 88,
+            "risk_assessment": 88,
+            "risk_tier": "HIGH_RISK",
+            "category": "HIGH_RISK",
+            "decision": "FLAGGED",
+            "status": "FLAGGED"
+        },
+        {
+            "id": "TXN1002",
+            "transaction_id": "TXN1002",
+            "timestamp": "2026-10-28 19:05:00",
+            "time": "19:05:00",
+            "channel": "UPI Payment",
+            "type": "Transfer",
+            "amount": 250.0,
+            "sender": "priya@okaxis",
+            "beneficiary": "store@paytm",
+            "from_user": "priya@okaxis",
+            "to_user": "store@paytm",
+            "risk_score": 12,
+            "risk_assessment": 12,
+            "risk_tier": "LOW_RISK",
+            "category": "LOW_RISK",
+            "decision": "APPROVED",
+            "status": "APPROVED"
+        },
+        {
+            "id": "TXN1003",
+            "transaction_id": "TXN1003",
+            "timestamp": "2026-10-28 18:50:00",
+            "time": "18:50:00",
+            "channel": "UPI Payment",
+            "type": "Transfer",
+            "amount": 12000.0,
+            "sender": "unknown@ybl",
+            "beneficiary": "crypto_ex@upi",
+            "from_user": "unknown@ybl",
+            "to_user": "crypto_ex@upi",
+            "risk_score": 94,
+            "risk_assessment": 94,
+            "risk_tier": "HIGH_RISK",
+            "category": "HIGH_RISK",
+            "decision": "BLOCKED",
+            "status": "BLOCKED"
+        }
     ]
 
 @app.get("/api/alerts")
