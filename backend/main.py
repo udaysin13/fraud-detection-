@@ -48,10 +48,10 @@ def health_check():
 @app.get("/api/model-info")
 def model_info():
     return {
+        "status": "active",
         "version": "v1.0.0-academic",
         "model_version": "v1.0.0-academic",
         "active_model_version": "v1.0.0-academic",
-        "status": "active",
         "models": list(models.keys()),
         "active_model": "xgboost"
     }
@@ -61,6 +61,7 @@ def model_info():
 @app.get("/api/v1/analytics/overview")
 def analytics():
     return {
+        "status": "success",
         "total_transactions": 1420,
         "fraud_labels": 84,
         "dataset_fraud_labels": 84,
@@ -75,6 +76,7 @@ def analytics():
 @app.get("/api/v1/models/metrics")
 def metrics():
     return {
+        "status": "success",
         "f1": 94.2,
         "f1_score": 0.942,
         "precision": 0.935,
@@ -102,7 +104,7 @@ def risk_score():
     return [
         {"name": "Low Risk", "label": "Low Risk", "value": 1250, "count": 1250, "color": "#10B981"},
         {"name": "Medium Risk", "label": "Medium Risk", "value": 138, "count": 138, "color": "#F59E0B"},
-        {"name": "High Risk", "label": "High Risk", "value": 32, "count": 32, "color": "#EF4444"}
+        {"name": "High Risk", "label": "High Risk", "value": 32, "color": "#EF4444"}
     ]
 
 @app.get("/api/transactions")
@@ -169,7 +171,7 @@ def transactions(limit: int = 6, risk_category: str = None):
         }
     ]
 
-# Explicit Prediction handlers for ALL HTTP methods
+# Complete prediction payload matching simulator schema
 @app.route("/api/predict", methods=["GET", "POST", "OPTIONS"])
 @app.route("/predict", methods=["GET", "POST", "OPTIONS"])
 @app.route("/api/v1/predict", methods=["GET", "POST", "OPTIONS"])
@@ -180,10 +182,25 @@ async def predict_handler(request: Request):
         "risk_score": 88,
         "risk_assessment": 88,
         "decision": "FLAGGED",
+        "recommended_action": "FLAGGED",
         "risk_tier": "HIGH_RISK",
+        "xgboost_probability": 0.94,
+        "xgboost_prob": "94.0%",
+        "isolation_score": 0.88,
+        "isolation_anomaly_score": "0.88",
         "confidence": 0.94,
-        "model_used": "xgboost",
-        "explanation": "Critical account takeover signature: First-time beneficiary with simultaneous SIM swap & unfamiliar device."
+        "model_used": "XGBoost + Isolation Forest",
+        "explanation": "Critical account takeover signature detected.",
+        "reasons": [
+            "SIM Card changed recently on mobile device",
+            "Unfamiliar device fingerprint & state location",
+            "High transaction amount to first-time beneficiary VPA"
+        ],
+        "explanatory_signals": [
+            "SIM Card changed recently on mobile device",
+            "Unfamiliar device fingerprint & state location",
+            "High transaction amount to first-time beneficiary VPA"
+        ]
     }
 
 @app.get("/api/alerts")
