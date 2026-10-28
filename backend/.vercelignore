@@ -1,5 +1,7 @@
-*.joblib
 *.pkl
+*.joblib
 *.h5
+*.onnx
 venv/
+.venv/
 __pycache__/
