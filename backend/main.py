@@ -47,12 +47,12 @@ def health_check():
 @app.get("/api/model-info")
 def model_info():
     return {
+        "status": "success",
         "version": "v1.0.0-academic",
         "model_version": "v1.0.0-academic",
         "active_model_version": "v1.0.0-academic",
-        "status": "active",
-        "models": list(models.keys()),
-        "active_model": "xgboost"
+        "active_model": "xgboost",
+        "models": list(models.keys())
     }
 
 @app.get("/api/analytics/overview")
@@ -60,6 +60,7 @@ def model_info():
 @app.get("/api/v1/analytics/overview")
 def analytics():
     return {
+        "status": "success",
         "total_transactions": 1420,
         "fraud_labels": 84,
         "dataset_fraud_labels": 84,
@@ -74,6 +75,7 @@ def analytics():
 @app.get("/api/v1/models/metrics")
 def metrics():
     return {
+        "status": "success",
         "f1": 94.2,
         "f1_score": 0.942,
         "precision": 0.935,
@@ -85,7 +87,7 @@ def metrics():
 @app.get("/trend")
 @app.get("/api/v1/trend")
 def trend(range: str = "24h"):
-    return [
+    trend_data = [
         {"timestamp": "00:00", "time": "00:00", "total": 120, "low_risk": 110, "medium_risk": 7, "high_risk": 3, "fraud": 2, "count": 120},
         {"timestamp": "04:00", "time": "04:00", "total": 80, "low_risk": 75, "medium_risk": 3, "high_risk": 2, "fraud": 1, "count": 80},
         {"timestamp": "08:00", "time": "08:00", "total": 240, "low_risk": 210, "medium_risk": 20, "high_risk": 10, "fraud": 5, "count": 240},
@@ -93,28 +95,31 @@ def trend(range: str = "24h"):
         {"timestamp": "16:00", "time": "16:00", "total": 410, "low_risk": 370, "medium_risk": 25, "high_risk": 15, "fraud": 8, "count": 410},
         {"timestamp": "20:00", "time": "20:00", "total": 220, "low_risk": 200, "medium_risk": 12, "high_risk": 8, "fraud": 4, "count": 220}
     ]
+    return {"status": "success", "data": trend_data, "trend": trend_data}
 
 @app.get("/api/risk-score")
 @app.get("/risk-score")
 @app.get("/api/v1/risk-score")
 def risk_score():
+    categories = [
+        {"name": "Low Risk", "label": "Low Risk", "value": 1250, "count": 1250, "color": "#10B981"},
+        {"name": "Medium Risk", "label": "Medium Risk", "value": 138, "count": 138, "color": "#F59E0B"},
+        {"name": "High Risk", "label": "High Risk", "value": 32, "count": 32, "color": "#EF4444"}
+    ]
     return {
+        "status": "success",
         "low_risk": 1250,
         "medium_risk": 138,
         "high_risk": 32,
-        "categories": [
-            {"name": "Low Risk", "label": "Low Risk", "value": 1250, "count": 1250, "color": "#10B981"},
-            {"name": "Medium Risk", "label": "Medium Risk", "value": 138, "count": 138, "color": "#F59E0B"},
-            {"name": "High Risk", "label": "High Risk", "value": 32, "count": 32, "color": "#EF4444"}
-        ]
+        "data": categories,
+        "categories": categories
     }
 
-# Complete transaction data schema for table rendering
 @app.get("/api/transactions")
 @app.get("/transactions")
 @app.get("/api/v1/transactions")
 def transactions(limit: int = 6, risk_category: str = None):
-    return [
+    txn_list = [
         {
             "id": "TXN1001",
             "transaction_id": "TXN1001",
@@ -173,14 +178,16 @@ def transactions(limit: int = 6, risk_category: str = None):
             "status": "BLOCKED"
         }
     ]
+    return {"status": "success", "data": txn_list, "transactions": txn_list}
 
 @app.get("/api/alerts")
 @app.get("/alerts")
 @app.get("/api/v1/alerts")
 def alerts(limit: int = 5):
-    return [
+    alert_list = [
         {"id": "ALT01", "type": "Velocity Anomaly", "severity": "HIGH", "timestamp": "Just now"}
     ]
+    return {"status": "success", "data": alert_list, "alerts": alert_list}
 
 @app.websocket("/ws/transactions")
 async def websocket_endpoint(websocket: WebSocket):
