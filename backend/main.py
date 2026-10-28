@@ -3,8 +3,9 @@ import joblib
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI()
+app = FastAPI(title="VaultGuard Fraud Engine")
 
+# Allow all origins for cross-origin requests
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -14,10 +15,15 @@ app.add_middleware(
 )
 
 models = {}
+
+# Dynamic absolute path resolution for local and Vercel environments
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_DIR = os.path.join(BASE_DIR, "ml", "saved_models")
+
 model_files = {
-    "logistic_regression": "backend/ml/saved_models/logistic_regression.joblib",
-    "random_forest": "backend/ml/saved_models/random_forest.joblib",
-    "xgboost": "backend/ml/saved_models/xgboost_model.joblib",
+    "logistic_regression": os.path.join(MODEL_DIR, "logistic_regression.joblib"),
+    "random_forest": os.path.join(MODEL_DIR, "random_forest.joblib"),
+    "xgboost": os.path.join(MODEL_DIR, "xgboost_model.joblib"),
 }
 
 for name, path in model_files.items():
@@ -33,3 +39,24 @@ for name, path in model_files.items():
 def read_root():
     return {"status": "online", "message": "Fraud Detection API Running"}
 
+# Health check endpoints for frontend communication status
+@app.get("/health")
+@app.get("/api/v1/health")
+def health_check():
+    loaded_models = [k for k, v in models.items() if v is not None]
+    return {
+        "status": "healthy",
+        "engine": "active",
+        "loaded_models": loaded_models,
+        "version": "1.0.0"
+    }
+
+# Model info endpoint expected by VaultGuard header
+@app.get("/api/v1/model-info")
+@app.get("/model-info")
+def model_info():
+    return {
+        "version": "v1.0.0-academic",
+        "status": "active",
+        "models": list(models.keys())
+    }
