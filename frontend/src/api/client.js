@@ -5,7 +5,7 @@
 
 export const BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
-  import.meta.env.VITE_API_URL ||
+  "https://fraud-detection-129v.vercel.app" ||
   "https://fraud-detection-nine-coral.vercel.app";
 
 export const API_BASE_URL = BASE_URL;
