@@ -2,6 +2,8 @@ import os
 import joblib
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional, Dict, Any
 
 app = FastAPI(title="VaultGuard Fraud Engine")
 
@@ -81,7 +83,6 @@ def metrics():
         "accuracy": 0.968
     }
 
-# Return Pure Array for Chart .map() function
 @app.get("/api/trend")
 @app.get("/trend")
 @app.get("/api/v1/trend")
@@ -95,7 +96,6 @@ def trend(range: str = "24h"):
         {"timestamp": "20:00", "time": "20:00", "total": 220, "low_risk": 200, "medium_risk": 12, "high_risk": 8, "fraud": 4, "count": 220}
     ]
 
-# Return Pure Array for Risk Score Pie/Donut Chart .map()
 @app.get("/api/risk-score")
 @app.get("/risk-score")
 @app.get("/api/v1/risk-score")
@@ -169,6 +169,27 @@ def transactions(limit: int = 6, risk_category: str = None):
             "status": "BLOCKED"
         }
     ]
+
+# Simulation / Prediction Endpoints (POST & GET)
+@app.post("/predict")
+@app.post("/api/predict")
+@app.post("/api/v1/predict")
+@app.post("/analyze")
+@app.post("/api/analyze")
+@app.post("/api/v1/analyze")
+@app.get("/predict")
+@app.get("/api/predict")
+@app.get("/api/v1/predict")
+def predict_transaction(data: Optional[Dict[str, Any]] = None):
+    return {
+        "status": "success",
+        "risk_score": 88,
+        "decision": "FLAGGED",
+        "risk_tier": "HIGH_RISK",
+        "confidence": 0.94,
+        "model_used": "xgboost",
+        "explanation": "Critical account takeover signature: First-time beneficiary with simultaneous SIM swap & unfamiliar device."
+    }
 
 @app.get("/api/alerts")
 @app.get("/alerts")
