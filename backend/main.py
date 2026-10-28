@@ -5,7 +5,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="VaultGuard Fraud Engine")
 
-# Allow all origins for cross-origin requests
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,8 +14,6 @@ app.add_middleware(
 )
 
 models = {}
-
-# Dynamic absolute path resolution for local and Vercel environments
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.join(BASE_DIR, "ml", "saved_models")
 
@@ -39,24 +36,12 @@ for name, path in model_files.items():
 def read_root():
     return {"status": "online", "message": "Fraud Detection API Running"}
 
-# Health check endpoints for frontend communication status
 @app.get("/health")
 @app.get("/api/v1/health")
 def health_check():
-    loaded_models = [k for k, v in models.items() if v is not None]
-    return {
-        "status": "healthy",
-        "engine": "active",
-        "loaded_models": loaded_models,
-        "version": "1.0.0"
-    }
+    return {"status": "healthy", "engine": "active", "version": "1.0.0"}
 
-# Model info endpoint expected by VaultGuard header
 @app.get("/api/v1/model-info")
 @app.get("/model-info")
 def model_info():
-    return {
-        "version": "v1.0.0-academic",
-        "status": "active",
-        "models": list(models.keys())
-    }
+    return {"version": "v1.0.0-academic", "status": "active", "models": list(models.keys())}
