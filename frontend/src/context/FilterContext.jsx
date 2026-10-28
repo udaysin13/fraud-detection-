@@ -67,7 +67,7 @@ export const FilterProvider = ({ children }) => {
 
     try {
       setWsStatus(reconnectAttemptsRef.current > 0 ? 'reconnecting' : 'disconnected');
-      const ws = new WebSocket(WS_URL);
+      const ws = try { new WebSocket(WS_URL) } catch(e) { console.warn("WS not supported on Serverless platform, using HTTP fallback"); };
       wsRef.current = ws;
 
       ws.onopen = () => {
