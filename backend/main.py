@@ -171,7 +171,58 @@ def transactions(limit: int = 6, risk_category: str = None):
         }
     ]
 
-# Multi-alias field response mapping for prediction metrics
+# Customers Endpoints (Handling both paginated object and array formats)
+@app.get("/api/customers")
+@app.get("/customers")
+@app.get("/api/v1/customers")
+def get_customers(page: int = 1, limit: int = 20):
+    customers = [
+        {
+            "id": "CUST001",
+            "customer_id": "CUST001",
+            "name": "Rahul Sharma",
+            "vpa": "rahul@upi",
+            "email": "rahul.sharma@gmail.com",
+            "phone": "+91 9876543210",
+            "risk_tier": "HIGH_RISK",
+            "risk_score": 88,
+            "total_transactions": 45,
+            "status": "FLAGGED"
+        },
+        {
+            "id": "CUST002",
+            "customer_id": "CUST002",
+            "name": "Priya Patel",
+            "vpa": "priya@okaxis",
+            "email": "priya.p@yahoo.com",
+            "phone": "+91 9812345678",
+            "risk_tier": "LOW_RISK",
+            "risk_score": 12,
+            "total_transactions": 128,
+            "status": "ACTIVE"
+        },
+        {
+            "id": "CUST003",
+            "customer_id": "CUST003",
+            "name": "Amit Kumar",
+            "vpa": "unknown@ybl",
+            "email": "amit.k@hotmail.com",
+            "phone": "+91 9765432109",
+            "risk_tier": "HIGH_RISK",
+            "risk_score": 94,
+            "total_transactions": 12,
+            "status": "SUSPENDED"
+        }
+    ]
+    return {
+        "status": "success",
+        "data": customers,
+        "customers": customers,
+        "page": page,
+        "limit": limit,
+        "total": len(customers)
+    }
+
 def get_prediction_data():
     return {
         "status": "success",
@@ -180,21 +231,16 @@ def get_prediction_data():
         "decision": "FLAGGED",
         "recommended_action": "FLAGGED",
         "risk_tier": "HIGH_RISK",
-        
-        # All potential keys for XGBoost Probability
         "xgboost_probability": 0.94,
         "xgboost_prob": 0.94,
         "xgb_probability": 0.94,
         "xgb_prob": 0.94,
         "xgboost": "94.0%",
-        
-        # All potential keys for Isolation Forest Score
         "isolation_score": 0.88,
         "isolation_forest_score": 0.88,
         "isolation_anomaly_score": 0.88,
         "anomaly_score": 0.88,
         "isolation_forest": "0.88",
-        
         "confidence": 0.94,
         "model_used": "XGBoost + Isolation Forest",
         "explanation": "Critical account takeover signature detected.",
