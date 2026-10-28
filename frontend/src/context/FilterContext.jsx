@@ -3,7 +3,7 @@ import { apiClient } from '../api/client';
 
 const FilterContext = createContext(null);
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'wss://YOUR-NEW-BACKEND-URL.vercel.app';
+const WS_URL = import.meta.env.VITE_WS_URL || '';
 const MAX_LIVE_EVENTS = 30;
 const MAX_NOTIFICATIONS = 15;
 
@@ -61,13 +61,30 @@ export const FilterProvider = ({ children }) => {
 
   // WebSocket Connection Management
   const connectWebSocket = useCallback(() => {
+    // Gracefully bypass WebSocket if not configured or using placeholder URL
+    if (!WS_URL || WS_URL.includes('YOUR-NEW-BACKEND-URL') || WS_URL.includes('YOUR-NEW')) {
+      setWsStatus('disconnected');
+      return;
+    }
+
     if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
       return;
     }
 
     try {
       setWsStatus(reconnectAttemptsRef.current > 0 ? 'reconnecting' : 'disconnected');
-      let ws; try { ws = new WebSocket(WS_URL); } catch(e) { console.warn("WS not supported on Serverless platform, using HTTP fallback"); }
+      let ws;
+      try {
+        ws = new WebSocket(WS_URL);
+      } catch (e) {
+        console.warn("WS not supported on Serverless platform, using HTTP fallback");
+        setWsStatus('disconnected');
+        return;
+      }
+      if (!ws) {
+        setWsStatus('disconnected');
+        return;
+      }
       wsRef.current = ws;
 
       ws.onopen = () => {
