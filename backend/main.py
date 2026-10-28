@@ -1,11 +1,10 @@
 import os
 import joblib
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="VaultGuard Fraud Engine")
 
-# Allow all CORS origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -37,7 +36,6 @@ for name, path in model_files.items():
 def read_root():
     return {"status": "online", "message": "Fraud Detection API Running"}
 
-# Endpoints with both /api prefix and normal routes
 @app.get("/health")
 @app.get("/api/health")
 @app.get("/api/v1/health")
@@ -78,3 +76,13 @@ def risk_score():
 @app.get("/model-info")
 def model_info():
     return {"version": "v1.0.0-academic", "status": "active", "models": list(models.keys())}
+
+# Safe WebSocket handler endpoint
+@app.websocket("/ws/transactions")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
