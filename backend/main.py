@@ -613,23 +613,13 @@ def export_transactions(type: str = Query("csv", regex="^csv$")):
 
 @app.get("/api/transactions/{txn_id}")
 def get_transaction_detail(txn_id: str):
-    return {
-        "id": txn_id,
-        "transaction_id": txn_id,
-        "timestamp": "2026-10-28 19:10:00",
-        "channel": "UPI_P2P",
-        "amount_inr": 8500.0,
-        "sender_id": "CUST_IND_9099",
-        "beneficiary_id": "BEN_IND_MULE_101",
-        "risk_score": 86.4,
-        "risk_category": "HIGH_RISK",
-        "decision": "Block",
-        "reasons": [
-            "High-risk device takeover: simultaneous new device & recent SIM swap",
-            "Recent SIM card change detected on account",
-            "Transaction originating from unverified new device"
-        ]
-    }
+    # Return the matching synthetic demo record rather than the same hard-coded
+    # high-risk example for every transaction ID.
+    rows = get_transactions(limit=10000, page=1)
+    for row in rows:
+        if str(row.get("transaction_id", row.get("id", ""))) == txn_id:
+            return row
+    raise HTTPException(status_code=404, detail=f"Transaction '{txn_id}' was not found.")
 
 
 # ─── ENTITIES (CUSTOMERS, MERCHANTS, CASES, RULES) ───────────────────────────
