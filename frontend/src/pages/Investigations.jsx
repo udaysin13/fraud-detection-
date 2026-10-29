@@ -17,8 +17,11 @@ const CASE_ACTIONS = [
   { label: 'Confirm fraud', status: 'Confirmed Fraud' },
 ];
 
+const normalizeStatus = (status) =>
+  String(status || '').trim().replaceAll('_', ' ').replace(/\s+/g, ' ').toLowerCase();
+
 const displayStatus = (status) =>
-  (status || '').replaceAll('_', ' ').replace(/^./, (letter) => letter.toUpperCase());
+  normalizeStatus(status).replace(/\b\w/g, (letter) => letter.toUpperCase());
 
 const StatusActions = ({ item, kind, onUpdate, onCreateCase, busy }) => (
   <div className="flex flex-wrap justify-end gap-1.5">
@@ -105,8 +108,9 @@ export const Investigations = () => {
 
   const matchesStatus = (status) => {
     if (statusFilter === 'All') return true;
-    const normalized = displayStatus(status);
-    return normalized === statusFilter || (statusFilter === 'Under Review' && normalized === 'In Review');
+    const normalized = normalizeStatus(status);
+    const selected = normalizeStatus(statusFilter);
+    return normalized === selected || (selected === 'under review' && normalized === 'in review');
   };
   const visibleCases = cases.filter((item) => matchesStatus(item.status));
   const visibleAlerts = alerts.filter((item) => matchesStatus(item.status));
