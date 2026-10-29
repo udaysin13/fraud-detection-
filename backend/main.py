@@ -285,7 +285,10 @@ def health_check():
         "status": "healthy" if models_ready else "degraded",
         "engine": "active",
         "version": "v1.0.0-academic",
-        "database": "connected",
+        # This project currently serves deterministic in-memory demo records; no database connection is configured.
+        "database": "not_configured",
+        "data_source": "synthetic_demo",
+        "transaction_count": 100,
         "ml_artifacts": "ready" if models_ready else "missing_models"
     }
 
@@ -300,16 +303,19 @@ def model_info():
         available_models.append("random_forest")
     if iso_model is not None:
         available_models.append("isolation_forest")
-    if not available_models:
-        available_models = ["random_forest", "isolation_forest"]
+    models_ready = xgb_model is not None or rf_model is not None or iso_model is not None
 
     return {
-        "status": "active",
+        "status": "active" if models_ready else "degraded",
         "version": "v1.0.0-academic",
         "model_version": "v1.0.0-academic",
         "active_model_version": "v1.0.0-academic",
         "models": available_models,
-        "active_model": "xgboost" if xgb_model is not None else "random_forest"
+        "active_model": (
+            "xgboost" if xgb_model is not None
+            else "random_forest" if rf_model is not None
+            else "heuristic_fallback"
+        )
     }
 
 @app.get("/api/models/metrics")
@@ -323,15 +329,22 @@ def get_metrics():
     roc = metrics_data.get("roc_auc", 0.9999)
     pr = metrics_data.get("pr_auc", 0.9986)
 
+    confusion = metrics_data.get("confusion_matrix")
+    accuracy = None
+    if isinstance(confusion, list) and len(confusion) == 2 and all(isinstance(row, list) and len(row) == 2 for row in confusion):
+        total = sum(sum(float(value) for value in row) for row in confusion)
+        if total > 0:
+            accuracy = (float(confusion[0][0]) + float(confusion[1][1])) / total
+
     return {
-        "status": "success",
+        "status": "success" if metrics_data else "unavailable",
         "precision": p,
         "recall": r,
         "f1": round(f1 * 100, 1),
         "f1_score": f1,
         "roc_auc": roc,
         "pr_auc": pr,
-        "accuracy": 0.991,
+        "accuracy": accuracy,
         "model_benchmarks": metrics_data.get("model_benchmarks", {})
     }
 
@@ -341,41 +354,71 @@ def get_metrics():
 @app.get("/analytics/overview")
 @app.get("/api/v1/analytics/overview")
 def analytics():
+    # Keep dashboard KPIs consistent with the records actually returned by the demo API.
+    rows = get_transactions(limit=10000, page=1)
+    total = len(rows)
+    blocked = sum(1 for row in rows if row.get("decision") == "Block")
+    review = sum(1 for row in rows if row.get("decision") == "Manual Review")
+    allowed = sum(1 for row in rows if row.get("decision") == "Allow")
+    flagged = sum(1 for row in rows if float(row.get("risk_score", 0)) > 40)
+    high_risk = sum(1 for row in rows if row.get("risk_category") == "HIGH_RISK")
     return {
         "status": "success",
-        "total_transactions": 1420,
-        "fraud_labels": 84,
-        "dataset_fraud_labels": 84,
-        "high_risk_count": 32,
-        "high_risk_transactions": 32,
-        "total_blocked": 28,
-        "total_review": 12,
-        "total_allowed": 1380,
-        "f1_score": 98.6,
-        "database_records": 1420
+        "data_source": "synthetic_demo",
+        "total_transactions": total,
+        # Demo records do not contain ground-truth fraud labels.
+        "fraud_labels": 0,
+        "dataset_fraud_labels": 0,
+        "high_risk_count": high_risk,
+        "high_risk_transactions": high_risk,
+        "total_blocked": blocked,
+        "total_review": review,
+        "total_allowed": allowed,
+        "total_fraud_flagged": flagged,
+        "f1_score": metrics_data.get("f1_score"),
+        "database_records": total
     }
 
 @app.get("/api/trend")
 @app.get("/trend")
 @app.get("/api/v1/trend")
 def trend(range: str = "24h"):
-    return [
-        {"timestamp": "00:00", "time": "00:00", "total": 120, "low_risk": 110, "medium_risk": 7, "high_risk": 3, "fraud": 2, "count": 120},
-        {"timestamp": "04:00", "time": "04:00", "total": 80, "low_risk": 75, "medium_risk": 3, "high_risk": 2, "fraud": 1, "count": 80},
-        {"timestamp": "08:00", "time": "08:00", "total": 240, "low_risk": 210, "medium_risk": 20, "high_risk": 10, "fraud": 5, "count": 240},
-        {"timestamp": "12:00", "time": "12:00", "total": 350, "low_risk": 310, "medium_risk": 28, "high_risk": 12, "fraud": 6, "count": 350},
-        {"timestamp": "16:00", "time": "16:00", "total": 410, "low_risk": 370, "medium_risk": 25, "high_risk": 15, "fraud": 8, "count": 410},
-        {"timestamp": "20:00", "time": "20:00", "total": 220, "low_risk": 200, "medium_risk": 12, "high_risk": 8, "fraud": 4, "count": 220}
-    ]
+    # Emit the field names expected by the dashboard chart and derive values from demo rows.
+    rows = get_transactions(limit=10000, page=1)
+    buckets = {}
+    for row in rows:
+        stamp = str(row.get("timestamp", ""))
+        try:
+            parsed = datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            continue
+        bucket_time = parsed.replace(minute=0, second=0, microsecond=0)
+        key = bucket_time.strftime("%Y-%m-%d %H:%M")
+        bucket = buckets.setdefault(key, {"timestamp": key, "total": 0, "blocked": 0, "manual_review": 0, "suspicious": 0})
+        bucket["total"] += 1
+        decision_value = str(row.get("decision", "")).strip().lower()
+        if decision_value == "block":
+            bucket["blocked"] += 1
+        if decision_value == "manual review":
+            bucket["manual_review"] += 1
+        if float(row.get("risk_score", 0)) > 40:
+            bucket["suspicious"] += 1
+    return [buckets[key] for key in sorted(buckets)]
 
 @app.get("/api/risk-score")
 @app.get("/risk-score")
 @app.get("/api/v1/risk-score")
 def risk_score():
+    rows = get_transactions(limit=10000, page=1)
+    counts = {
+        "LOW_RISK": sum(1 for row in rows if row.get("risk_category") == "LOW_RISK"),
+        "REVIEW": sum(1 for row in rows if row.get("risk_category") == "REVIEW"),
+        "HIGH_RISK": sum(1 for row in rows if row.get("risk_category") == "HIGH_RISK"),
+    }
     return [
-        {"name": "Low Risk", "label": "Low Risk", "value": 1250, "count": 1250, "color": "#10B981"},
-        {"name": "Medium Risk", "label": "Medium Risk", "value": 138, "count": 138, "color": "#F59E0B"},
-        {"name": "High Risk", "label": "High Risk", "value": 32, "count": 32, "color": "#EF4444"}
+        {"name": "Low Risk", "label": "Low Risk", "value": counts["LOW_RISK"], "count": counts["LOW_RISK"], "color": "#10B981"},
+        {"name": "Medium Risk", "label": "Medium Risk", "value": counts["REVIEW"], "count": counts["REVIEW"], "color": "#F59E0B"},
+        {"name": "High Risk", "label": "High Risk", "value": counts["HIGH_RISK"], "count": counts["HIGH_RISK"], "color": "#EF4444"}
     ]
 
 @app.get("/api/transactions")
