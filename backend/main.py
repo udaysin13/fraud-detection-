@@ -1,6 +1,8 @@
 import os
 import sys
 import json
+import csv
+import io
 import time
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
@@ -10,7 +12,7 @@ import numpy as np
 import pandas as pd
 from fastapi import FastAPI, Request, HTTPException, WebSocket, WebSocketDisconnect, Query, UploadFile, File, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
 # Ensure backend directory and project root are in sys.path
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -448,6 +450,42 @@ def get_transactions(limit: int = 20, page: int = 1, risk_category: Optional[str
         filtered = [t for t in mock_txns if t["risk_category"] == risk_category]
         return filtered
     return mock_txns
+
+@app.get("/api/export")
+@app.get("/export")
+def export_transactions(type: str = Query("csv", regex="^csv$")):
+    """Download the transaction dataset as a CSV attachment."""
+    rows = get_transactions(limit=10000, page=1)
+    if not rows:
+        raise HTTPException(status_code=404, detail="No transactions are available to export.")
+
+    preferred_columns = [
+        "transaction_id", "timestamp", "channel", "transaction_type",
+        "amount_inr", "sender_id", "beneficiary_id", "risk_score",
+        "risk_category", "decision", "status", "reasons",
+    ]
+    columns = [key for key in preferred_columns if any(key in row for row in rows)]
+    extra_columns = sorted({key for row in rows for key in row.keys()} - set(columns))
+    columns.extend(extra_columns)
+
+    output = io.StringIO(newline="")
+    writer = csv.DictWriter(output, fieldnames=columns, extrasaction="ignore")
+    writer.writeheader()
+    for row in rows:
+        safe_row = dict(row)
+        reasons = safe_row.get("reasons")
+        if isinstance(reasons, (list, dict)):
+            safe_row["reasons"] = json.dumps(reasons, ensure_ascii=False)
+        writer.writerow(safe_row)
+
+    csv_content = chr(0xFEFF) + output.getvalue()
+    filename = "vaultguard-transactions-" + datetime.now(timezone.utc).date().isoformat() + ".csv"
+    return Response(
+        content=csv_content,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="' + filename + '"'},
+    )
+
 
 @app.get("/api/transactions/{txn_id}")
 def get_transaction_detail(txn_id: str):
