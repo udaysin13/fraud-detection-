@@ -30,9 +30,9 @@ except ImportError:
     from backend.ml.features import extract_single_txn_features, FEATURE_COLUMNS
 
 try:
-    from database import is_configured, ensure_schema, persist_transactions, get_status as get_database_status
+    from database import is_configured, ensure_schema, persist_transactions, list_transactions, get_status as get_database_status
 except ImportError:
-    from backend.database import is_configured, ensure_schema, persist_transactions, get_status as get_database_status
+    from backend.database import is_configured, ensure_schema, persist_transactions, list_transactions, get_status as get_database_status
 
 app = FastAPI(
     title="VaultGuard Fraud Engine",
@@ -218,7 +218,7 @@ def run_real_prediction(txn_dict: Dict[str, Any]) -> Dict[str, Any]:
 
     txn_id = txn_dict.get("transaction_id") or f"TXN_LIVE_{int(time.time() * 1000)}"
 
-    return {
+    result = {
         "status": "success",
         "transaction_id": txn_id,
         "risk_score": risk_score,
@@ -243,6 +243,29 @@ def run_real_prediction(txn_dict: Dict[str, Any]) -> Dict[str, Any]:
         "explanatory_signals": reasons,
         "rule_signals": rule_signals,
     }
+
+    # Persist every successful live prediction to MySQL.
+    if is_configured():
+        try:
+            ensure_schema()
+            stamp = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
+            persist_transactions([{
+                "transaction_id": txn_id,
+                "timestamp": stamp,
+                "amount_inr": amt,
+                "sender_id": txn_dict.get("sender_id") or txn_dict.get("customer_id") or "LIVE_CUSTOMER",
+                "beneficiary_id": txn_dict.get("beneficiary_id") or txn_dict.get("receiver_id") or txn_dict.get("merchant_id") or "LIVE_BENEFICIARY",
+                "channel": txn_dict.get("channel") or "UPI_P2P",
+                "segment": txn_dict.get("segment") or "Live Prediction",
+                "risk_score": risk_score,
+                "risk_category": risk_category,
+                "decision": decision,
+                "status": "FLAGGED" if decision == "Block" else ("REVIEW" if decision == "Manual Review" else "APPROVED"),
+                "reasons": reasons,
+            }])
+        except Exception as exc:
+            print(f"[MySQL prediction persistence warning] {type(exc).__name__}: {str(exc)[:200]}")
+    return result
 
 
 # ─── CORE PREDICTION ENDPOINTS ───────────────────────────────────────────────
@@ -573,16 +596,18 @@ def get_transactions(
         })
         mock_txns.append(txn)
 
-    # Persist illustrative demo rows when cloud MySQL is configured. A DB outage
-    # must not take down the existing demo API; /api/database/status exposes health.
+    # Seed demo rows once, then read history from MySQL so live predictions appear.
+    history_rows = mock_txns
     if is_configured():
         try:
             ensure_schema()
             persist_transactions(mock_txns)
+            history_rows = list_transactions(limit=10000, offset=0)
         except Exception as exc:
-            print(f"[MySQL persistence warning] {type(exc).__name__}: {str(exc)[:200]}")
+            print(f"[MySQL history warning] {type(exc).__name__}: {str(exc)[:200]}")
+            history_rows = mock_txns
 
-    filtered = mock_txns
+    filtered = history_rows
     if risk_category and risk_category != "All":
         filtered = [t for t in filtered if t["risk_category"] == risk_category]
     if decision and decision != "All":
