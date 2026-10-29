@@ -15,11 +15,6 @@ from fastapi import FastAPI, Request, HTTPException, WebSocket, WebSocketDisconn
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
-try:
-    from database import is_configured, ensure_schema, persist_transactions, get_status as get_database_status
-except ImportError:
-    from backend.database import is_configured, ensure_schema, persist_transactions, get_status as get_database_status
-
 # Ensure backend directory and project root are in sys.path
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
@@ -33,6 +28,11 @@ try:
     from ml.features import extract_single_txn_features, FEATURE_COLUMNS
 except ImportError:
     from backend.ml.features import extract_single_txn_features, FEATURE_COLUMNS
+
+try:
+    from database import is_configured, ensure_schema, persist_transactions, get_status as get_database_status
+except ImportError:
+    from backend.database import is_configured, ensure_schema, persist_transactions, get_status as get_database_status
 
 app = FastAPI(
     title="VaultGuard Fraud Engine",
