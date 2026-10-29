@@ -238,9 +238,9 @@ export const Overview = () => {
         <KpiCard
           title="Transactions Analyzed"
           value={formatIndianNumber(overview?.total_transactions || 0)}
-          subtitle="Records in the database"
+          subtitle="Synthetic demo records"
           icon={Activity}
-          tooltip="Count of persisted transaction records currently in the database."
+          tooltip="Count of synthetic demo transaction records returned by the API; no database is configured."
           accentColor="teal"
           loading={loading}
         />
@@ -248,9 +248,9 @@ export const Overview = () => {
         <KpiCard
           title="Dataset Fraud Labels"
           value={formatIndianNumber(overview?.dataset_fraud_labels || 0)}
-          subtitle="Ground-truth labels in stored data"
+          subtitle="Ground-truth labels unavailable in demo data"
           icon={ShieldAlert}
-          tooltip="Count of records labeled as fraud in the dataset; this is separate from model risk flags."
+          tooltip="Demo transaction rows do not include ground-truth fraud labels; model risk flags are separate."
           accentColor="rose"
           loading={loading}
         />
@@ -267,7 +267,7 @@ export const Overview = () => {
 
         <KpiCard
           title="Model Performance"
-          value={modelMetrics ? `${(modelMetrics.f1_score * 100).toFixed(1)}% F1` : '—'}
+          value={Number.isFinite(Number(modelMetrics?.f1_score)) && modelMetrics?.status !== 'unavailable' ? `${(Number(modelMetrics.f1_score) * 100).toFixed(1)}% F1` : '—'}
           subtitle="Synthetic holdout; not real-world accuracy"
           icon={Cpu}
           tooltip="F1 score reported by the saved model evaluation metrics for the synthetic chronological test split."
