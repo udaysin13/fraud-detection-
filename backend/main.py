@@ -545,6 +545,9 @@ def get_transactions(
             "risk_category": category,
             "decision": action,
             "status": status_value,
+            # Provide a deterministic customer segment so the segment filter
+            # returns meaningful results instead of an empty list for every value.
+            "segment": ["Consumer", "Salaried Professional", "Trader"][index % 3],
         })
         mock_txns.append(txn)
 
@@ -555,8 +558,12 @@ def get_transactions(
         filtered = [t for t in filtered if t["decision"] == decision]
     if channel and channel != "All":
         filtered = [t for t in filtered if t["channel"] == channel]
-    if segment and segment != "All":
-        filtered = [t for t in filtered if t.get("segment") == segment]
+    if segment and segment.strip().lower() != "all":
+        requested_segment = segment.strip().casefold()
+        filtered = [
+            t for t in filtered
+            if str(t.get("segment", "")).strip().casefold() == requested_segment
+        ]
     if search:
         term = search.strip().lower()
         filtered = [
