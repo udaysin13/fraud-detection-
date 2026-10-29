@@ -347,4 +347,38 @@ export const apiClient = {
   // Export
   getExportUrl: () =>
     `${BASE_URL}/api/export?type=csv`,
+
+  downloadExportCSV: async () => {
+    try {
+      const response = await fetch(BASE_URL + "/api/export?type=csv", {
+        headers: { Accept: "text/csv, application/csv, */*" },
+      });
+
+      if (!response.ok) {
+        let detail = "CSV export failed (HTTP " + response.status + ").";
+        try {
+          const body = await response.json();
+          if (body?.detail) {
+            detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+          }
+        } catch {
+          // Keep the HTTP error when the server does not return JSON.
+        }
+        throw new ApiError(detail, response.status);
+      }
+
+      const blob = await response.blob();
+      if (!blob.size) {
+        throw new ApiError("The server returned an empty CSV export.", response.status);
+      }
+      return blob;
+    } catch (err) {
+      if (err instanceof ApiError) throw err;
+      throw new ApiError(
+        "Unable to download CSV from " + BASE_URL + ". Check backend connectivity and CORS settings.",
+        0,
+        { originalError: err.message }
+      );
+    }
+  },
 };
