@@ -150,11 +150,26 @@ export const Overview = () => {
   const handleUpdateAlertStatus = async (alertId, newStatus) => {
     try {
       const updated = await apiClient.updateAlert(alertId, { status: newStatus });
+      // The API returns an update acknowledgement, not a complete alert object.
+      // Merge it into the existing alert so title, severity, assignee, etc. remain visible.
+      const mergedAlert = {
+        ...(selectedAlert && selectedAlert.id === alertId ? selectedAlert : {}),
+        ...updated,
+        status: updated.status || updated.new_status || newStatus,
+      };
       setRecentAlerts((prev) =>
-        prev.map((a) => (a.id === alertId ? updated : a))
+        prev.map((alert) =>
+          alert.id === alertId
+            ? { ...alert, ...updated, status: updated.status || updated.new_status || newStatus }
+            : alert
+        )
       );
       if (selectedAlert && selectedAlert.id === alertId) {
-        setSelectedAlert(updated);
+        setSelectedAlert((alert) => ({
+          ...(alert || {}),
+          ...mergedAlert,
+          status: updated.status || updated.new_status || newStatus,
+        }));
       }
     } catch (err) {
       console.error('Failed to update alert:', err);
