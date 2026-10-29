@@ -323,11 +323,11 @@ def model_info():
 @app.get("/api/v1/models/metrics")
 def get_metrics():
     # Return metrics calculated from training splits in metrics.json
-    p = metrics_data.get("precision", 0.9889)
-    r = metrics_data.get("recall", 0.9834)
-    f1 = metrics_data.get("f1_score", 0.9861)
-    roc = metrics_data.get("roc_auc", 0.9999)
-    pr = metrics_data.get("pr_auc", 0.9986)
+    p = metrics_data.get("precision")
+    r = metrics_data.get("recall")
+    f1 = metrics_data.get("f1_score")
+    roc = metrics_data.get("roc_auc")
+    pr = metrics_data.get("pr_auc")
 
     confusion = metrics_data.get("confusion_matrix")
     accuracy = None
