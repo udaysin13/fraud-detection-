@@ -131,3 +131,47 @@ def get_status() -> Dict[str, Any]:
     except Exception as exc:
         # Return a useful error class, never credentials or connection strings.
         return {"configured": True, "connected": False, "error": type(exc).__name__, "message": str(exc)[:240]}
+
+
+def list_transactions(limit: int = 10000, offset: int = 0) -> list[Dict[str, Any]]:
+    """Read persisted transactions for the live history endpoint."""
+    with _connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT transaction_id, amount_inr, sender_id, receiver_id, channel,
+                       segment, risk_score, risk_category, decision, transaction_status,
+                       transaction_timestamp, reasons
+                FROM transactions
+                ORDER BY transaction_timestamp DESC, id DESC
+                LIMIT %s OFFSET %s
+            """, (int(limit), int(offset)))
+            rows = cursor.fetchall()
+    result = []
+    for row in rows:
+        stamp = row.get("transaction_timestamp")
+        reasons = row.get("reasons")
+        if isinstance(reasons, str):
+            try:
+                reasons = __import__("json").loads(reasons)
+            except Exception:
+                reasons = [reasons] if reasons else []
+        result.append({
+            "id": row.get("transaction_id"),
+            "transaction_id": row.get("transaction_id"),
+            "timestamp": stamp.isoformat(sep=" ") if hasattr(stamp, "isoformat") else stamp,
+            "time": stamp.strftime("%H:%M:%S") if hasattr(stamp, "strftime") else "",
+            "amount": float(row.get("amount_inr") or 0),
+            "amount_inr": float(row.get("amount_inr") or 0),
+            "sender_id": row.get("sender_id"),
+            "beneficiary_id": row.get("receiver_id"),
+            "channel": row.get("channel"),
+            "segment": row.get("segment"),
+            "risk_score": float(row.get("risk_score") or 0),
+            "risk_assessment": float(row.get("risk_score") or 0),
+            "risk_category": row.get("risk_category"),
+            "risk_tier": row.get("risk_category"),
+            "decision": row.get("decision"),
+            "status": row.get("transaction_status"),
+            "reasons": reasons or [],
+        })
+    return result
