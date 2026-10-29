@@ -5,7 +5,7 @@ import csv
 import io
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List
 
 import joblib
@@ -381,76 +381,156 @@ def risk_score():
 @app.get("/api/transactions")
 @app.get("/transactions")
 @app.get("/api/v1/transactions")
-def get_transactions(limit: int = 20, page: int = 1, risk_category: Optional[str] = None):
-    mock_txns = [
+def get_transactions(
+    limit: int = Query(20, ge=1, le=10000),
+    page: int = Query(1, ge=1),
+    risk_category: Optional[str] = None,
+    decision: Optional[str] = None,
+    channel: Optional[str] = None,
+    search: Optional[str] = None,
+    min_amount: Optional[float] = Query(None, ge=0),
+    max_amount: Optional[float] = Query(None, ge=0),
+    segment: Optional[str] = None,
+):
+    """
+    Return a deterministic synthetic transaction dataset for the demo UI.
+    These are illustrative records, not live bank/customer transactions.
+    """
+    templates = [
         {
-            "id": "TXN_IND_1001",
-            "transaction_id": "TXN_IND_1001",
-            "timestamp": "2026-10-28 19:10:00",
-            "time": "19:10:00",
             "channel": "UPI_P2P",
             "transaction_type": "P2P_TRANSFER",
             "amount": 8500.0,
-            "amount_inr": 8500.0,
             "sender_id": "CUST_IND_9099",
             "beneficiary_id": "BEN_IND_MULE_101",
             "sender_vpa": "victim.user@okhdfcbank",
             "beneficiary_vpa": "mule.drain@paytm",
             "risk_score": 86.4,
-            "risk_assessment": 86.4,
-            "risk_tier": "HIGH_RISK",
             "risk_category": "HIGH_RISK",
             "decision": "Block",
             "status": "FLAGGED",
-            "reasons": ["High-risk device takeover: simultaneous new device & recent SIM swap"]
+            "reasons": ["High-risk device takeover: simultaneous new device & recent SIM swap"],
         },
         {
-            "id": "TXN_IND_1002",
-            "transaction_id": "TXN_IND_1002",
-            "timestamp": "2026-10-28 19:05:00",
-            "time": "19:05:00",
             "channel": "UPI_P2M_QR",
             "transaction_type": "MERCHANT_PAYMENT",
             "amount": 185.0,
-            "amount_inr": 185.0,
             "sender_id": "CUST_IND_1464",
             "beneficiary_id": "MERCH_IND_102",
             "sender_vpa": "sanjay.sharma69@paytm",
             "beneficiary_vpa": "apna.kirana@paytm",
             "risk_score": 7.1,
-            "risk_assessment": 7.1,
-            "risk_tier": "LOW_RISK",
             "risk_category": "LOW_RISK",
             "decision": "Allow",
             "status": "APPROVED",
-            "reasons": ["Verified customer baseline parameters"]
+            "reasons": ["Verified customer baseline parameters"],
         },
         {
-            "id": "TXN_IND_1003",
-            "transaction_id": "TXN_IND_1003",
-            "timestamp": "2026-10-28 18:50:00",
-            "time": "18:50:00",
             "channel": "IMPS",
             "transaction_type": "P2P_TRANSFER",
             "amount": 4990.0,
-            "amount_inr": 4990.0,
             "sender_id": "CUST_IND_3029",
             "beneficiary_id": "BEN_IND_1610",
             "sender_vpa": "rahul.nair50@barodampay",
             "beneficiary_vpa": "karthik.gupta17@okhdfcbank",
             "risk_score": 71.1,
-            "risk_assessment": 71.1,
-            "risk_tier": "HIGH_RISK",
             "risk_category": "HIGH_RISK",
             "decision": "Block",
             "status": "FLAGGED",
-            "reasons": ["Structuring pattern: amount just below regulatory limit"]
-        }
+            "reasons": ["Structuring pattern: amount just below regulatory limit"],
+        },
+        {
+            "channel": "WALLET",
+            "transaction_type": "WALLET_TRANSFER",
+            "amount": 1250.0,
+            "sender_id": "CUST_IND_4410",
+            "beneficiary_id": "MERCH_IND_230",
+            "sender_vpa": "demo.customer@paytm",
+            "beneficiary_vpa": "demo.store@paytm",
+            "risk_score": 48.2,
+            "risk_category": "REVIEW",
+            "decision": "Manual Review",
+            "status": "REVIEW",
+            "reasons": ["Unusual transaction amount; additional review recommended"],
+        },
+        {
+            "channel": "RUPAY_CARD",
+            "transaction_type": "CARD_PAYMENT",
+            "amount": 2199.0,
+            "sender_id": "CUST_IND_5721",
+            "beneficiary_id": "MERCH_IND_315",
+            "sender_vpa": "demo.cardholder@bank",
+            "beneficiary_vpa": "demo.retailer@merchant",
+            "risk_score": 18.6,
+            "risk_category": "LOW_RISK",
+            "decision": "Allow",
+            "status": "APPROVED",
+            "reasons": ["No elevated risk indicators in this synthetic example"],
+        },
     ]
+
+    # Build a larger repeatable demo dataset instead of returning only 3 hard-coded rows.
+    mock_txns = []
+    base_time = datetime(2026, 10, 28, 19, 10, 0)
+    for index in range(100):
+        template = templates[index % len(templates)]
+        txn = dict(template)
+        txn["reasons"] = list(template["reasons"])
+        txn_id = f"TXN_IND_{1001 + index}"
+        txn_time = base_time - timedelta(minutes=5 * index)
+        # Vary the amount and score slightly while keeping the risk band consistent.
+        amount = round(float(template["amount"]) + ((index // len(templates)) % 7) * 37.0, 2)
+        score = round(min(100.0, max(0.0, float(template["risk_score"]) + ((index // len(templates)) % 5) * 1.3)), 1)
+        if score > 70:
+            category, action, status_value = "HIGH_RISK", "Block", "FLAGGED"
+        elif score > 40:
+            category, action, status_value = "REVIEW", "Manual Review", "REVIEW"
+        else:
+            category, action, status_value = "LOW_RISK", "Allow", "APPROVED"
+        txn.update({
+            "id": txn_id,
+            "transaction_id": txn_id,
+            "timestamp": txn_time.strftime("%Y-%m-%d %H:%M:%S"),
+            "time": txn_time.strftime("%H:%M:%S"),
+            "amount": amount,
+            "amount_inr": amount,
+            "sender_id": f"CUST_IND_{1000 + ((index * 37) % 9000):04d}",
+            "beneficiary_id": f"{'BEN' if index % 2 == 0 else 'MERCH'}_IND_{100 + ((index * 13) % 900):03d}",
+            "risk_score": score,
+            "risk_assessment": score,
+            "risk_tier": category,
+            "risk_category": category,
+            "decision": action,
+            "status": status_value,
+        })
+        mock_txns.append(txn)
+
+    filtered = mock_txns
     if risk_category and risk_category != "All":
-        filtered = [t for t in mock_txns if t["risk_category"] == risk_category]
-        return filtered
-    return mock_txns
+        filtered = [t for t in filtered if t["risk_category"] == risk_category]
+    if decision and decision != "All":
+        filtered = [t for t in filtered if t["decision"] == decision]
+    if channel and channel != "All":
+        filtered = [t for t in filtered if t["channel"] == channel]
+    if segment and segment != "All":
+        filtered = [t for t in filtered if t.get("segment") == segment]
+    if search:
+        term = search.strip().lower()
+        filtered = [
+            t for t in filtered
+            if term in str(t.get("transaction_id", "")).lower()
+            or term in str(t.get("sender_id", "")).lower()
+            or term in str(t.get("beneficiary_id", "")).lower()
+            or term in str(t.get("sender_vpa", "")).lower()
+            or term in str(t.get("beneficiary_vpa", "")).lower()
+        ]
+    if min_amount is not None:
+        filtered = [t for t in filtered if float(t.get("amount_inr", t.get("amount", 0))) >= min_amount]
+    if max_amount is not None:
+        filtered = [t for t in filtered if float(t.get("amount_inr", t.get("amount", 0))) <= max_amount]
+
+    start_index = (page - 1) * limit
+    return filtered[start_index:start_index + limit]
 
 @app.get("/api/export")
 @app.get("/export")
