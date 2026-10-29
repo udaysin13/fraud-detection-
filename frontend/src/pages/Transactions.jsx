@@ -40,6 +40,8 @@ export const Transactions = () => {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [exportError, setExportError] = useState(null);
+  const [exporting, setExporting] = useState(false);
 
   // Filters
   const [decisionFilter, setDecisionFilter] = useState('All');
@@ -85,8 +87,25 @@ export const Transactions = () => {
     fetchTransactions();
   }, [fetchTransactions]);
 
-  const handleExportCSV = () => {
-    window.open(apiClient.getExportUrl(), '_blank');
+  const handleExportCSV = async () => {
+    setExportError(null);
+    setExporting(true);
+    try {
+      const blob = await apiClient.downloadExportCSV();
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `vaultguard-transactions-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(downloadUrl);
+    } catch (err) {
+      console.error('Failed to export transactions:', err);
+      setExportError(err.message || 'CSV export failed. Please try again.');
+    } finally {
+      setExporting(false);
+    }
   };
 
   // Client-side sorting for current page
@@ -146,11 +165,13 @@ export const Transactions = () => {
         </div>
 
         <button
+          type="button"
           onClick={handleExportCSV}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-500 text-slate-800 rounded-lg text-xs font-bold transition-all shrink-0 shadow-sm"
+          disabled={exporting}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-500 disabled:opacity-60 disabled:cursor-wait text-slate-800 rounded-lg text-xs font-bold transition-all shrink-0 shadow-sm"
         >
           <Download className="w-3.5 h-3.5" />
-          <span>Export CSV</span>
+          <span>{exporting ? 'Exporting...' : 'Export CSV'}</span>
         </button>
       </div>
 
@@ -160,6 +181,17 @@ export const Transactions = () => {
           onRetry={fetchTransactions}
           isRetrying={loading}
         />
+      )}
+
+      {exportError && (
+        <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <div className="flex items-center justify-between gap-3">
+            <span>{exportError}</span>
+            <button type="button" onClick={() => setExportError(null)} className="font-bold underline">
+              Dismiss
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Main Transactions Explorer Card */}
