@@ -56,9 +56,16 @@ export const Alerts = () => {
   const handleUpdateAlert = async (alertId, payload) => {
     try {
       const updated = await apiClient.updateAlert(alertId, payload);
-      setAlerts((prev) => prev.map((a) => (a.id === alertId ? updated : a)));
+      // PATCH responses may contain only an acknowledgement, not the full alert.
+      // Preserve the existing display fields while applying the returned status.
+      const mergeAlert = (alert) => ({
+        ...alert,
+        ...updated,
+        status: updated?.status || updated?.new_status || payload?.status || alert.status,
+      });
+      setAlerts((prev) => prev.map((a) => (a.id === alertId ? mergeAlert(a) : a)));
       if (selectedAlert && selectedAlert.id === alertId) {
-        setSelectedAlert(updated);
+        setSelectedAlert((alert) => mergeAlert(alert || selectedAlert));
       }
     } catch (err) {
       console.error('Failed to update alert status:', err);
