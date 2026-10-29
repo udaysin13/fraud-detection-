@@ -43,6 +43,7 @@ from backend.app.routes.models_api import router as models_router
 from backend.app.routes.websocket import router as websocket_router
 from backend.app.routes.bulk_analysis import router as bulk_analysis_router
 from backend.app.routes.rules import router as rules_router
+from backend.app.routes.cases import router as cases_router
 from backend.app.services.data_loader import seed_database_on_first_run
 from backend.app.services.ml_service import get_model_health
 
@@ -96,6 +97,7 @@ app.include_router(models_router)
 app.include_router(websocket_router)
 app.include_router(bulk_analysis_router)
 app.include_router(rules_router)
+app.include_router(cases_router)
 
 
 @app.get("/", tags=["Health"])
