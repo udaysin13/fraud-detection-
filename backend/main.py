@@ -923,7 +923,11 @@ async def upload_bulk_analysis(file: UploadFile = File(...)):
                 "original": original,
                 "risk_score": risk_score,
                 "risk_category": prediction.get("risk_category", "REVIEW"),
-                "predicted_class": "Suspected Fraud" if prediction.get("decision") == "Block" else "Normal Prediction",
+                "predicted_class": (
+                    "Suspected Fraud" if prediction.get("decision") == "Block"
+                    else "Needs Review" if prediction.get("decision") == "Manual Review"
+                    else "Normal Prediction"
+                ),
                 "decision": prediction.get("decision", "Manual Review"),
                 "reasons": prediction.get("reasons", []),
                 "model_used": prediction.get("model_used", "Configured model"),
@@ -958,6 +962,7 @@ async def upload_bulk_analysis(file: UploadFile = File(...)):
             "suspected_fraud": sum(1 for record in analysed if record["predicted_class"] == "Suspected Fraud"),
             "high_risk": sum(1 for record in analysed if record["risk_category"] == "HIGH_RISK"),
             "normal_predictions": sum(1 for record in analysed if record["predicted_class"] == "Normal Prediction"),
+            "manual_review": sum(1 for record in analysed if record["predicted_class"] == "Needs Review"),
             "average_risk_score": round(sum(scores) / len(scores), 1) if scores else None,
         },
         "extra_columns": extra_columns,
