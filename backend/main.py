@@ -852,12 +852,36 @@ def export_bulk_analysis(analysis_id: str):
             detail="This analysis is no longer available on this server instance. Please upload and analyse the CSV again, then download the report immediately."
         )
     output = io.StringIO(newline="")
-    columns = ["source_row", "transaction_id", "risk_score", "risk_category", "predicted_class", "decision", "status", "reasons"]
+    # Keep prediction columns separate from original input columns. If an input
+    # column collides with a prediction field (for example "decision"), prefix
+    # it with "input_" so the original value is not lost or confused with output.
+    prediction_columns = [
+        "source_row", "transaction_id", "risk_score", "risk_category",
+        "predicted_class", "decision", "status", "reasons"
+    ]
+    source_columns = []
+    for record in records:
+        for key in record.get("original", {}):
+            output_key = key if key not in prediction_columns else f"input_{key}"
+            if output_key not in source_columns:
+                source_columns.append(output_key)
+    columns = prediction_columns + [key for key in source_columns if key not in prediction_columns]
     writer = csv.DictWriter(output, fieldnames=columns, extrasaction="ignore")
     writer.writeheader()
     for record in records:
-        row = dict(record)
-        row["reasons"] = json.dumps(row.get("reasons", []), ensure_ascii=False)
+        row = {
+            "source_row": record.get("source_row"),
+            "transaction_id": record.get("transaction_id"),
+            "risk_score": record.get("risk_score"),
+            "risk_category": record.get("risk_category"),
+            "predicted_class": record.get("predicted_class"),
+            "decision": record.get("decision"),
+            "status": record.get("status"),
+            "reasons": json.dumps(record.get("reasons", []), ensure_ascii=False),
+        }
+        for key, value in record.get("original", {}).items():
+            output_key = key if key not in prediction_columns else f"input_{key}"
+            row[output_key] = value
         writer.writerow(row)
     content = chr(0xFEFF) + output.getvalue()
     return Response(
