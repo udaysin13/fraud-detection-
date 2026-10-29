@@ -15,6 +15,11 @@ from fastapi import FastAPI, Request, HTTPException, WebSocket, WebSocketDisconn
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
+try:
+    from database import is_configured, ensure_schema, persist_transactions, get_status as get_database_status
+except ImportError:
+    from backend.database import is_configured, ensure_schema, persist_transactions, get_status as get_database_status
+
 # Ensure backend directory and project root are in sys.path
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
@@ -292,6 +297,26 @@ def health_check():
         "ml_artifacts": "ready" if models_ready else "missing_models"
     }
 
+@app.get("/api/database/status")
+def database_status():
+    """Check the configured cloud MySQL connection and initialize the transaction schema."""
+    if not is_configured():
+        return {"status": "not_configured", **get_database_status()}
+    try:
+        ensure_schema()
+    except Exception as exc:
+        return {
+            "status": "error",
+            "configured": True,
+            "connected": False,
+            "error": type(exc).__name__,
+            "message": str(exc)[:240],
+        }
+    result = get_database_status()
+    result["status"] = "connected" if result.get("connected") else "error"
+    return result
+
+
 @app.get("/api/v1/model-info")
 @app.get("/model-info")
 @app.get("/api/model-info")
@@ -547,6 +572,15 @@ def get_transactions(
             "status": status_value,
         })
         mock_txns.append(txn)
+
+    # Persist illustrative demo rows when cloud MySQL is configured. A DB outage
+    # must not take down the existing demo API; /api/database/status exposes health.
+    if is_configured():
+        try:
+            ensure_schema()
+            persist_transactions(mock_txns)
+        except Exception as exc:
+            print(f"[MySQL persistence warning] {type(exc).__name__}: {str(exc)[:200]}")
 
     filtered = mock_txns
     if risk_category and risk_category != "All":
