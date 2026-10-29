@@ -4,6 +4,7 @@ import json
 import csv
 import io
 import time
+import uuid
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
@@ -733,6 +734,137 @@ def get_bulk_sample():
                   "TXN_SMPL_01,2026-10-28 12:00:00,185.0,UPI_P2M_QR,MERCHANT_PAYMENT,CUST_01,MERCH_01,DEV_01,0,0\n" \
                   "TXN_SMPL_02,2026-10-28 12:05:00,8500.0,UPI_P2P,P2P_TRANSFER,CUST_02,MULE_01,DEV_NEW,1,1\n"
     return PlainTextResponse(content=csv_content, media_type="text/csv")
+
+
+
+
+# ─── BULK CSV ANALYSIS ────────────────────────────────────────────────────────
+# Results are kept in process memory for immediate download. On serverless
+# platforms this cache is temporary; durable history requires an external DB.
+_BULK_ANALYSES: Dict[str, List[Dict[str, Any]]] = {}
+_BULK_MAX_BYTES = 5 * 1024 * 1024
+_BULK_MAX_ROWS = 10000
+_BULK_REQUIRED_COLUMNS = {"transaction_id", "timestamp", "amount_inr", "sender_id"}
+
+
+@app.post("/api/bulk-analysis/upload")
+async def upload_bulk_analysis(file: UploadFile = File(...)):
+    filename = (file.filename or "").lower()
+    if not filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Please upload a .csv file.")
+
+    raw = await file.read(_BULK_MAX_BYTES + 1)
+    if not raw:
+        raise HTTPException(status_code=400, detail="The uploaded CSV is empty.")
+    if len(raw) > _BULK_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="CSV exceeds the 5 MB upload limit.")
+    try:
+        decoded = raw.decode("utf-8-sig")
+        frame = pd.read_csv(io.StringIO(decoded), dtype=str, keep_default_na=False)
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="CSV must use UTF-8 encoding.")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Could not parse CSV: {exc}")
+
+    frame.columns = [str(column).strip() for column in frame.columns]
+    if frame.empty:
+        raise HTTPException(status_code=400, detail="The CSV contains no data rows.")
+    if len(frame) > _BULK_MAX_ROWS:
+        raise HTTPException(status_code=413, detail="CSV exceeds the 10,000-row upload limit.")
+    missing = sorted(_BULK_REQUIRED_COLUMNS - set(frame.columns))
+    if missing:
+        raise HTTPException(status_code=400, detail="Missing required columns: " + ", ".join(missing))
+
+    records = []
+    extra_columns = sorted(set(frame.columns) - (_BULK_REQUIRED_COLUMNS | {
+        "channel", "transaction_type", "beneficiary_id", "merchant_id",
+        "merchant_category", "device_id", "is_new_device", "sim_change_flag",
+        "is_fraud"
+    }))
+    invalid_rows = 0
+    for row_index, (_, row) in enumerate(frame.iterrows(), start=1):
+        original = row.to_dict()
+        # Ground-truth labels, if supplied, are preserved as unverified metadata
+        # and are deliberately excluded from model input.
+        model_input = {key: value for key, value in original.items() if key != "is_fraud"}
+        try:
+            amount = float(str(model_input.get("amount_inr", "")).strip())
+            if not np.isfinite(amount) or amount <= 0:
+                raise ValueError("amount_inr must be a positive number")
+            model_input["amount_inr"] = amount
+            prediction = run_real_prediction(model_input)
+            risk_score = float(prediction.get("risk_score", 0))
+            records.append({
+                "source_row": row_index,
+                "transaction_id": str(original.get("transaction_id") or prediction.get("transaction_id")),
+                "original": original,
+                "risk_score": risk_score,
+                "risk_category": prediction.get("risk_category", "REVIEW"),
+                "predicted_class": "Suspected Fraud" if prediction.get("decision") == "Block" else "Normal Prediction",
+                "decision": prediction.get("decision", "Manual Review"),
+                "reasons": prediction.get("reasons", []),
+                "model_used": prediction.get("model_used", "Configured model"),
+                "status": "analysed",
+            })
+        except Exception as exc:
+            invalid_rows += 1
+            records.append({
+                "source_row": row_index,
+                "transaction_id": str(original.get("transaction_id") or f"row-{row_index}"),
+                "original": original,
+                "risk_score": None,
+                "risk_category": "INVALID",
+                "predicted_class": "Invalid Row",
+                "decision": "Not analysed",
+                "reasons": [str(exc)[:240]],
+                "model_used": None,
+                "status": "invalid",
+            })
+
+    analysed = [record for record in records if record["status"] == "analysed"]
+    scores = [record["risk_score"] for record in analysed if record.get("risk_score") is not None]
+    analysis_id = uuid.uuid4().hex
+    _BULK_ANALYSES[analysis_id] = records
+    return {
+        "status": "success",
+        "analysis_id": analysis_id,
+        "summary": {
+            "total_rows": len(records),
+            "analysed_rows": len(analysed),
+            "invalid_rows": invalid_rows,
+            "suspected_fraud": sum(1 for record in analysed if record["predicted_class"] == "Suspected Fraud"),
+            "high_risk": sum(1 for record in analysed if record["risk_category"] == "HIGH_RISK"),
+            "normal_predictions": sum(1 for record in analysed if record["predicted_class"] == "Normal Prediction"),
+            "average_risk_score": round(sum(scores) / len(scores), 1) if scores else None,
+        },
+        "extra_columns": extra_columns,
+        "records": records,
+        "notice": "Predictions are model assessments, not confirmed fraud. Supplied is_fraud values are unverified and were not used for inference.",
+    }
+
+
+@app.get("/api/bulk-analysis/{analysis_id}/export")
+def export_bulk_analysis(analysis_id: str):
+    records = _BULK_ANALYSES.get(analysis_id)
+    if records is None:
+        raise HTTPException(
+            status_code=404,
+            detail="This analysis is no longer available on this server instance. Please upload and analyse the CSV again, then download the report immediately."
+        )
+    output = io.StringIO(newline="")
+    columns = ["source_row", "transaction_id", "risk_score", "risk_category", "predicted_class", "decision", "status", "reasons"]
+    writer = csv.DictWriter(output, fieldnames=columns, extrasaction="ignore")
+    writer.writeheader()
+    for record in records:
+        row = dict(record)
+        row["reasons"] = json.dumps(row.get("reasons", []), ensure_ascii=False)
+        writer.writerow(row)
+    content = chr(0xFEFF) + output.getvalue()
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="vaultguard-bulk-analysis-' + analysis_id[:8] + '.csv"'}
+    )
 
 
 # ─── WEBSOCKET (GRACEFUL LOCAL SUPPORT) ──────────────────────────────────────
