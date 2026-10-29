@@ -42,6 +42,7 @@ export const Transactions = () => {
   const [error, setError] = useState(null);
   const [exportError, setExportError] = useState(null);
   const [exporting, setExporting] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
 
   // Filters
   const [decisionFilter, setDecisionFilter] = useState('All');
@@ -59,14 +60,18 @@ export const Transactions = () => {
     try {
       const data = await apiClient.getTransactions({
         page,
-        limit,
+        // Fetch one extra row so Next is disabled on the final page, even when
+        // the filtered result count is an exact multiple of the page size.
+        limit: limit + 1,
         decision: decisionFilter,
         risk_category: riskCategoryFilter,
         channel: channelFilter,
         search: searchQuery,
       });
 
-      setTransactions(data || []);
+      const rows = Array.isArray(data) ? data : [];
+      setHasMore(rows.length > limit);
+      setTransactions(rows.slice(0, limit));
     } catch (err) {
       console.error('Failed to fetch transactions:', err);
       setError(err.message || 'Unable to retrieve transaction records.');
@@ -116,10 +121,14 @@ export const Transactions = () => {
       return amtB - amtA;
     }
     if (sortBy === 'risk_desc') {
-      return (b.risk_score || 0) - (a.risk_score || 0);
+      return (Number(b.risk_score) || 0) - (Number(a.risk_score) || 0);
     }
-    // Default newest
-    return (b.id || 0) - (a.id || 0);
+    // Transaction IDs are strings (e.g. TXN_IND_1100), so numeric subtraction
+    // produces NaN. Sort by timestamp first, then use the ID as a stable fallback.
+    const timeA = Date.parse(a.timestamp || '') || 0;
+    const timeB = Date.parse(b.timestamp || '') || 0;
+    if (timeA !== timeB) return timeB - timeA;
+    return String(b.transaction_id || b.id || '').localeCompare(String(a.transaction_id || a.id || ''));
   });
 
   return (
@@ -390,7 +399,7 @@ export const Transactions = () => {
         {/* Pagination Bar */}
         <div className="flex items-center justify-between pt-3 border-t border-slate-200 text-xs text-slate-400">
           <span>
-            Page <strong className="text-slate-800">{page}</strong> (showing up to {limit} records)
+            Page <strong className="text-slate-800">{page}</strong> · Showing {transactions.length} records
           </span>
 
           <div className="flex items-center gap-2">
@@ -405,7 +414,7 @@ export const Transactions = () => {
 
             <button
               onClick={() => setPage((p) => p + 1)}
-              disabled={transactions.length < limit || loading}
+              disabled={!hasMore || loading}
               className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 text-slate-600 rounded-lg border border-slate-200 transition-colors flex items-center gap-1"
             >
               <span>Next</span>
