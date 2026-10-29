@@ -456,8 +456,8 @@ def get_transactions(
     decision: Optional[str] = None,
     channel: Optional[str] = None,
     search: Optional[str] = None,
-    min_amount: Optional[float] = Query(None, ge=0),
-    max_amount: Optional[float] = Query(None, ge=0),
+    min_amount: Optional[float] = None,
+    max_amount: Optional[float] = None,
     segment: Optional[str] = None,
 ):
     """
