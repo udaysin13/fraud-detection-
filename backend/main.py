@@ -303,7 +303,7 @@ def model_info():
         available_models.append("random_forest")
     if iso_model is not None:
         available_models.append("isolation_forest")
-    models_ready = xgb_model is not None or rf_model is not None or iso_model is not None
+    models_ready = xgb_model is not None or rf_model is not None
 
     return {
         "status": "active" if models_ready else "degraded",
@@ -340,7 +340,7 @@ def get_metrics():
         "status": "success" if metrics_data else "unavailable",
         "precision": p,
         "recall": r,
-        "f1": round(f1 * 100, 1),
+        "f1": round(float(f1) * 100, 1) if f1 is not None else None,
         "f1_score": f1,
         "roc_auc": roc,
         "pr_auc": pr,
