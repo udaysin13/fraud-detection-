@@ -101,3 +101,150 @@
   padding: 8px 12px !important;
   color: #17243A !important;
 }
+
+
+/* Product-wide polish: consistent surfaces, calmer contrast and clear interaction states. */
+:root {
+  --vg-ink: #17243a;
+  --vg-muted: #66758a;
+  --vg-border: #e3eaf2;
+  --vg-canvas: #f5f8fc;
+  --vg-surface: #ffffff;
+  --vg-teal: #0f766e;
+}
+
+html {
+  scroll-behavior: smooth;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  line-height: 1.5;
+}
+
+::selection {
+  background: rgba(13, 148, 136, 0.18);
+  color: var(--vg-ink);
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+.app-shell {
+  background:
+    radial-gradient(ellipse at 50% -15%, rgba(20, 184, 166, 0.06), transparent 42%),
+    var(--vg-canvas);
+}
+
+.app-shell header,
+.app-shell aside,
+.app-shell main [class*="rounded-xl"][class*="border"],
+.app-shell main [class*="rounded-lg"][class*="border"] {
+  border-color: var(--vg-border);
+}
+
+.app-shell header,
+.app-shell aside {
+  box-shadow: 0 8px 28px -22px rgba(23, 36, 58, 0.28);
+}
+
+.app-shell aside {
+  border-radius: 16px;
+}
+
+.app-shell main .shadow-card-soft,
+.app-shell main .shadow-card-dark {
+  box-shadow: 0 8px 24px -20px rgba(23, 36, 58, 0.34);
+}
+
+.app-shell main button:not(:disabled) {
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.app-shell main button:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+.app-shell nav a {
+  border-radius: 10px;
+  transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+}
+
+.app-shell input,
+.app-shell select,
+.app-shell textarea {
+  border-radius: 10px;
+}
+
+.app-shell input:focus,
+.app-shell select:focus,
+.app-shell textarea:focus {
+  border-color: #0d9488;
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.1);
+  outline: none;
+}
+
+.app-shell table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+}
+
+.app-shell table thead th {
+  color: #66758a;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.app-shell table tbody tr {
+  transition: background-color 120ms ease;
+}
+
+.app-shell table tbody tr:hover {
+  background-color: #f8fafc;
+}
+
+.app-shell .recharts-wrapper,
+.app-shell .recharts-surface {
+  max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    overflow-x: clip;
+  }
+
+  .app-shell header {
+    border-radius: 14px;
+  }
+
+  .app-shell main {
+    min-width: 0;
+  }
+
+  .app-shell main table {
+    min-width: 620px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

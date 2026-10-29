@@ -40,9 +40,28 @@ export const Header = ({ onToggleMobileSidebar }) => {
   } = useFilter();
 
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
 
-  const handleExportCSV = () => {
-    window.open(apiClient.getExportUrl(), '_blank');
+  const handleExportCSV = async () => {
+    setExportError('');
+    setExporting(true);
+    try {
+      const blob = await apiClient.downloadExportCSV();
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `vaultguard-transactions-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+    } catch (err) {
+      console.error('Header CSV export failed:', err);
+      setExportError(err.message || 'CSV export failed. Try again from Transactions.');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleToggleNotif = () => {
@@ -172,13 +191,20 @@ export const Header = ({ onToggleMobileSidebar }) => {
 
         {/* Export CSV */}
         <button
+          type="button"
           onClick={handleExportCSV}
-          title="Export recent transactions to CSV"
-          className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800 rounded-lg transition-colors"
+          disabled={exporting}
+          title={exporting ? 'Preparing CSV download…' : 'Export transactions to CSV'}
+          className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800 rounded-lg transition-colors disabled:opacity-60"
           aria-label="Export CSV"
         >
-          <Download className="w-4 h-4" />
+          {exporting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
         </button>
+        {exportError && (
+          <span role="status" aria-live="polite" className="max-w-48 text-[11px] font-medium text-rose-600">
+            {exportError}
+          </span>
+        )}
 
         {/* Notification Bell with Dropdown */}
         <div className="relative">
